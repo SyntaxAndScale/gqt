@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use crate::gqueues::models::{Queue, Task};
 
+#[derive(Clone)]
 pub struct GqueuesClient {
     client: Client,
     base_url: String,
@@ -69,7 +70,7 @@ impl GqueuesClient {
         Ok(data.items)
     }
 
-    pub async fn create_task(&self, text: &str, queue_key: Option<&str>, notes: Option<&str>) -> Result<Task> {
+    pub async fn create_task_with_idempotency(&self, text: &str, queue_key: Option<&str>, notes: Option<&str>, idempotency_key: &str) -> Result<Task> {
         let url = format!("{}/v0", self.base_url);
         let mut instruction = serde_json::json!({
             "text": text,
@@ -87,9 +88,6 @@ impl GqueuesClient {
             "action": "createTask",
             "instructions": [instruction]
         });
-
-        // Generate a simple idempotency key (random for now, could be deterministic)
-        let idempotency_key = uuid::Uuid::new_v4().to_string();
 
         let resp = self.client
             .post(url)
@@ -116,5 +114,10 @@ impl GqueuesClient {
         let task: Task = serde_json::from_value(task_json["task"].clone())?;
         
         Ok(task)
+    }
+
+    pub async fn create_task(&self, text: &str, queue_key: Option<&str>, notes: Option<&str>) -> Result<Task> {
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
+        self.create_task_with_idempotency(text, queue_key, notes, &idempotency_key).await
     }
 }

@@ -1,4 +1,3 @@
-use crate::models::{Transaction};
 use crate::gqueues::{GqueuesClient, Queue, Task};
 use crate::db::Database;
 use std::sync::{Arc, Mutex};
@@ -15,7 +14,6 @@ pub struct App {
     pub db: Arc<Mutex<Database>>,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
-    pub transaction_log: Vec<Transaction>,
     pub selected_queue_index: usize,
     pub selected_task_index: usize,
     pub active_pane: Pane,
@@ -31,7 +29,6 @@ impl App {
             db: Arc::new(Mutex::new(db)),
             queues: Vec::new(),
             tasks: Vec::new(),
-            transaction_log: Vec::new(),
             selected_queue_index: 0,
             selected_task_index: 0,
             active_pane: Pane::Queues,

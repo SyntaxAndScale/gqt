@@ -63,7 +63,8 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 operation TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
-                sync_status TEXT NOT NULL
+                sync_status TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL
             )",
             [],
         )?;
@@ -177,18 +178,51 @@ impl Database {
 
         // Log transaction
         let transaction_id = Uuid::new_v4().to_string();
+        let idempotency_key = Uuid::new_v4().to_string();
         let operation = serde_json::to_string(&crate::models::Operation::CreateTask(task.clone()))?;
         self.conn.execute(
-            "INSERT INTO transactions (id, operation, timestamp, sync_status)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO transactions (id, operation, timestamp, sync_status, idempotency_key)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             (
                 &transaction_id,
                 &operation,
                 &now,
                 "pending",
+                &idempotency_key,
             ),
         )?;
 
         Ok(task)
+    }
+
+    pub fn get_pending_transactions(&self) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, operation, idempotency_key FROM transactions WHERE sync_status = 'pending' ORDER BY timestamp ASC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+
+        let mut txs = Vec::new();
+        for tx in rows {
+            txs.push(tx?);
+        }
+        Ok(txs)
+    }
+
+    pub fn mark_transaction_synced(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE transactions SET sync_status = 'synced' WHERE id = ?1",
+            [id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_task_remote_key(&self, local_key: &str, remote_key: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE tasks SET remote_key = ?1 WHERE remote_key = ?2",
+            [remote_key, local_key],
+        )?;
+        Ok(())
     }
 }

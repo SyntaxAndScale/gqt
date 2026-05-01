@@ -3,6 +3,7 @@ mod db;
 mod gqueues;
 mod config;
 mod models;
+mod sync;
 mod ui;
 
 use anyhow::Result;
@@ -13,15 +14,17 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
+use tokio::sync::mpsc;
 
 use crate::app::{App, Pane};
 use crate::gqueues::GqueuesClient;
+use crate::sync::{SyncEngine, SyncEvent};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load config
     let gq_config = config::load_config()?;
-    let client = GqueuesClient::new(gq_config.api_endpoint, gq_config.access_token);
+    let client = std::sync::Arc::new(GqueuesClient::new(gq_config.api_endpoint, gq_config.access_token));
     
     // Initialize database
     let db = db::Database::new()?;
@@ -34,58 +37,65 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new(client, db);
+    let mut app = App::new((*client).clone(), db);
     
-    // Initial fetch of queues
-    app.loading = true;
-    match app.client.get_queues().await {
-        Ok(queues) => {
-            let db = app.db.lock().unwrap();
-            for q in &queues {
-                let _ = db.upsert_queue(q);
-            }
-        }
-        Err(e) => app.error = Some(format!("Failed to fetch queues from API: {}", e)),
-    }
+    // Setup Sync Engine
+    let (sync_tx, mut sync_rx) = mpsc::channel(32);
+    let mut sync_engine = SyncEngine::new(client, app.db.clone(), sync_tx);
+    tokio::spawn(async move {
+        sync_engine.run().await;
+    });
 
-    // Load queues from DB
+    // Load initial state from DB
     {
         let db = app.db.lock().unwrap();
-        match db.get_queues() {
-            Ok(queues) => app.queues = queues,
-            Err(e) => app.error = Some(format!("Failed to load queues from DB: {}", e)),
+        if let Ok(queues) = db.get_queues() {
+            app.queues = queues;
         }
-    }
-    app.loading = false;
-
-    // Fetch tasks for the first queue if available
-    if let Some(queue) = app.queues.first() {
-        let queue_key = queue.key.clone();
-        app.loading = true;
-        match app.client.get_tasks(&queue_key).await {
-            Ok(tasks) => {
-                let db = app.db.lock().unwrap();
-                for t in &tasks {
-                    let _ = db.upsert_task(t);
-                }
-            }
-            Err(e) => app.error = Some(format!("Failed to fetch tasks from API: {}", e)),
-        }
-        
-        // Load tasks from DB
-        {
-            let db = app.db.lock().unwrap();
-            match db.get_tasks(&queue_key) {
-                Ok(tasks) => app.tasks = tasks,
-                Err(e) => app.error = Some(format!("Failed to load tasks from DB: {}", e)),
+        if let Some(queue) = app.queues.first() {
+            if let Ok(tasks) = db.get_tasks(&queue.key) {
+                app.tasks = tasks;
             }
         }
-        app.loading = false;
     }
 
     // Main loop
     while app.running {
         terminal.draw(|f| ui::render(f, &app))?;
+
+        // Check for sync events
+        while let Ok(event) = sync_rx.try_recv() {
+            match event {
+                SyncEvent::Complete => {
+                    app.error = None;
+                    app.loading = false; // Just in case
+                    app.error = Some("Sync successful".into()); // Re-use error field for status message for now
+                    // Reload data from DB
+                    let db = app.db.lock().unwrap();
+                    if let Ok(queues) = db.get_queues() {
+                        app.queues = queues;
+                    }
+                    if let Some(queue) = app.queues.get(app.selected_queue_index) {
+                        if let Ok(tasks) = db.get_tasks(&queue.key) {
+                            app.tasks = tasks;
+                        }
+                    }
+                }
+                SyncEvent::Error(e) => {
+                    app.error = Some(e);
+                    // Still reload data because some push operations might have succeeded
+                    let db = app.db.lock().unwrap();
+                    if let Ok(queues) = db.get_queues() {
+                        app.queues = queues;
+                    }
+                    if let Some(queue) = app.queues.get(app.selected_queue_index) {
+                        if let Ok(tasks) = db.get_tasks(&queue.key) {
+                            app.tasks = tasks;
+                        }
+                    }
+                }
+            }
+        }
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {

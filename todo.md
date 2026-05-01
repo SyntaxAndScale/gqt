@@ -9,10 +9,14 @@
 ## Persistence & Sync
 - [x] Phase 1: Setup & Schema (0.1.2)
 - [x] Phase 2: Local CRUD (0.1.3)
-- [ ] Phase 3: Sync Engine (0.1.4)
+- [x] Phase 3: Sync Engine (0.1.4)
+    - [x] Handle idempotency keys in transaction log.
+    - [x] Implement background push/pull.
+    - [ ] Optimize Pull Logic (deltas / active queue priority).
 
 ## Architecture
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
 
 ## Future Work
 - [ ] Implement GQueues API authentication workflow (user input for API key).
+- [ ] Change configuration file format from .json to .toml

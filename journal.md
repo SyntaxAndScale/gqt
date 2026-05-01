@@ -36,4 +36,12 @@
     - Added `a` keybinding to create a local task (mocked title/notes for now).
 - **Versioning:** Incremented version to `0.1.3`.
 
+## 2026-05-01 (Sync Engine & Fixes)
+- **Persistence Phase 3:** Implemented background Sync Engine.
+    - Background loop with exponential backoff.
+    - Idempotency key support in transactions.
+    - Fixed `NOT NULL constraint failed: tasks.queue_id` by ensuring `queue_key` is set during pull.
+    - Improved UI feedback: refresh data on both sync success and error; display sync status messages.
+- **Versioning:** Incremented version to `0.1.4`.
+
 
