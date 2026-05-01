@@ -6,15 +6,13 @@
 - [x] Initialize Git and configure `.gitignore`.
 - [ ] Research Gqueues API for authentication and task modification.
 
-## Core Implementation
-- [x] Basic TUI layout implementation with Ratatui.
-- [x] Navigation logic between panes.
-- [x] Local storage/caching layer. (In progress: Using memory for now)
-- [x] API integration for fetching tasks.
-- [ ] CRUD: Create task implementation.
-- [x] CRUD: Read/List tasks implementation.
-- [ ] CRUD: Update task implementation.
-- [ ] CRUD: Delete task implementation.
+## Persistence & Sync
+- [x] Phase 1: Setup & Schema (0.1.2)
+- [ ] Phase 2: Local CRUD (0.1.3)
+- [ ] Phase 3: Sync Engine (0.1.4)
 
 ## Architecture
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
+
+## Future Work
+- [ ] Implement GQueues API authentication workflow (user input for API key).

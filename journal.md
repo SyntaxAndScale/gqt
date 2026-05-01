@@ -26,3 +26,11 @@
     - Verified compilation with `cargo check`.
 - **Versioning:** Incremented version to `0.1.1`.
 
+## 2026-05-01 (Persistence Phase 1)
+- **Persistence:** Implemented Phase 1 of the Persistence & Sync architecture.
+    - Added `rusqlite` (with bundled features) and `directories` crates.
+    - Implemented XDG-compliant path resolution for the SQLite database (`$XDG_DATA_HOME/gqt/gqt.db`).
+    - Created `src/db.rs` to handle schema initialization for `queues`, `tasks`, and `transactions`.
+    - Integrated `Database` into `App` state using `Arc<Mutex<Database>>` to support future background sync.
+- **Versioning:** Incremented version to `0.1.2`.
+

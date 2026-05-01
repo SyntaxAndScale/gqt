@@ -1,6 +1,7 @@
-use crate::models::Transaction;
+use crate::models::{Transaction};
 use crate::gqueues::{GqueuesClient, Queue, Task};
-use std::sync::Arc;
+use crate::db::Database;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -11,6 +12,7 @@ pub enum Pane {
 
 pub struct App {
     pub client: Arc<GqueuesClient>,
+    pub db: Arc<Mutex<Database>>,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
     pub transaction_log: Vec<Transaction>,
@@ -23,9 +25,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(client: GqueuesClient) -> Self {
+    pub fn new(client: GqueuesClient, db: Database) -> Self {
         Self {
             client: Arc::new(client),
+            db: Arc::new(Mutex::new(db)),
             queues: Vec::new(),
             tasks: Vec::new(),
             transaction_log: Vec::new(),

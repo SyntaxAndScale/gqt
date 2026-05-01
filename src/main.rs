@@ -1,4 +1,5 @@
 mod app;
+mod db;
 mod gqueues;
 mod config;
 mod models;
@@ -21,6 +22,9 @@ async fn main() -> Result<()> {
     // Load config
     let gq_config = config::load_config()?;
     let client = GqueuesClient::new(gq_config.api_endpoint, gq_config.access_token);
+    
+    // Initialize database
+    let db = db::Database::new()?;
 
     // Setup terminal
     enable_raw_mode()?;
@@ -30,7 +34,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new(client);
+    let mut app = App::new(client, db);
     
     // Initial fetch of queues
     app.loading = true;
