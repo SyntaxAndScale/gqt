@@ -24,13 +24,16 @@
     - Created `src/gqueues/models.rs`, `src/gqueues/client.rs`, and `src/gqueues/mod.rs`.
     - Updated `App` and `main.rs` to use the new module structure.
     - Verified compilation with `cargo check`.
-- **Versioning:** Incremented version to `0.1.1`.
-
-## 2026-05-01 (Persistence Phase 1)
-- **Persistence:** Implemented Phase 1 of the Persistence & Sync architecture.
-    - Added `rusqlite` (with bundled features) and `directories` crates.
-    - Implemented XDG-compliant path resolution for the SQLite database (`$XDG_DATA_HOME/gqt/gqt.db`).
-    - Created `src/db.rs` to handle schema initialization for `queues`, `tasks`, and `transactions`.
-    - Integrated `Database` into `App` state using `Arc<Mutex<Database>>` to support future background sync.
 - **Versioning:** Incremented version to `0.1.2`.
+
+## 2026-05-01 (Persistence Phase 2)
+- **Persistence:** Implemented Phase 2: Local CRUD.
+    - Refactored `App` to use SQLite as the primary source of truth.
+    - Implemented API-to-DB caching (upserting queues and tasks on fetch).
+    - Implemented local-only task creation with placeholder `remote_key` (`local-<uuid>`).
+    - Added transaction logging for local creations in the `transactions` table.
+    - Updated UI to show a "Pending" indicator (`⏳`) for unsynced tasks.
+    - Added `a` keybinding to create a local task (mocked title/notes for now).
+- **Versioning:** Incremented version to `0.1.3`.
+
 

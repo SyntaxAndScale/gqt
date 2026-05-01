@@ -39,17 +39,46 @@ async fn main() -> Result<()> {
     // Initial fetch of queues
     app.loading = true;
     match app.client.get_queues().await {
-        Ok(queues) => app.queues = queues,
-        Err(e) => app.error = Some(format!("Failed to fetch queues: {}", e)),
+        Ok(queues) => {
+            let db = app.db.lock().unwrap();
+            for q in &queues {
+                let _ = db.upsert_queue(q);
+            }
+        }
+        Err(e) => app.error = Some(format!("Failed to fetch queues from API: {}", e)),
+    }
+
+    // Load queues from DB
+    {
+        let db = app.db.lock().unwrap();
+        match db.get_queues() {
+            Ok(queues) => app.queues = queues,
+            Err(e) => app.error = Some(format!("Failed to load queues from DB: {}", e)),
+        }
     }
     app.loading = false;
 
     // Fetch tasks for the first queue if available
     if let Some(queue) = app.queues.first() {
+        let queue_key = queue.key.clone();
         app.loading = true;
-        match app.client.get_tasks(&queue.key).await {
-            Ok(tasks) => app.tasks = tasks,
-            Err(e) => app.error = Some(format!("Failed to fetch tasks: {}", e)),
+        match app.client.get_tasks(&queue_key).await {
+            Ok(tasks) => {
+                let db = app.db.lock().unwrap();
+                for t in &tasks {
+                    let _ = db.upsert_task(t);
+                }
+            }
+            Err(e) => app.error = Some(format!("Failed to fetch tasks from API: {}", e)),
+        }
+        
+        // Load tasks from DB
+        {
+            let db = app.db.lock().unwrap();
+            match db.get_tasks(&queue_key) {
+                Ok(tasks) => app.tasks = tasks,
+                Err(e) => app.error = Some(format!("Failed to load tasks from DB: {}", e)),
+            }
         }
         app.loading = false;
     }
@@ -70,14 +99,50 @@ async fn main() -> Result<()> {
                                 let queue_key = queue.key.clone();
                                 app.loading = true;
                                 terminal.draw(|f| ui::render(f, &app))?; // Show loading
+                                
+                                // Try fetching from API
                                 match app.client.get_tasks(&queue_key).await {
                                     Ok(tasks) => {
-                                        app.tasks = tasks;
-                                        app.selected_task_index = 0;
+                                        let db = app.db.lock().unwrap();
+                                        for t in &tasks {
+                                            let _ = db.upsert_task(t);
+                                        }
                                     }
-                                    Err(e) => app.error = Some(format!("Failed to fetch tasks: {}", e)),
+                                    Err(e) => app.error = Some(format!("API fetch failed: {}. Showing local data.", e)),
+                                }
+
+                                // Always load from DB (which now has latest API data if it succeeded)
+                                {
+                                    let db = app.db.lock().unwrap();
+                                    match db.get_tasks(&queue_key) {
+                                        Ok(tasks) => {
+                                            app.tasks = tasks;
+                                            app.selected_task_index = 0;
+                                        }
+                                        Err(e) => app.error = Some(format!("Failed to load local tasks: {}", e)),
+                                    }
                                 }
                                 app.loading = false;
+                            }
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        if let Some(queue) = app.selected_queue() {
+                            // Mock task creation for now (could be an input field later)
+                            let new_task = crate::gqueues::models::Task {
+                                key: "".into(),
+                                title: "New Local Task".into(),
+                                notes: Some("Created offline".into()),
+                                completed: false,
+                                queue_key: Some(queue.key.clone()),
+                            };
+                            let db = app.db.lock().unwrap();
+                            match db.add_task_local(new_task) {
+                                Ok(task) => {
+                                    app.tasks.push(task);
+                                    app.selected_task_index = app.tasks.len() - 1;
+                                }
+                                Err(e) => app.error = Some(format!("Failed to create local task: {}", e)),
                             }
                         }
                     }

@@ -69,12 +69,17 @@ pub fn render(frame: &mut Frame, app: &App) {
     let task_items: Vec<ListItem> = app.tasks.iter().enumerate()
         .map(|(i, t)| {
             let prefix = if t.completed { "[x] " } else { "[ ] " };
+            let sync_indicator = if t.key.is_empty() || t.key.starts_with("local-") {
+                " ⏳"
+            } else {
+                ""
+            };
             let style = if i == app.selected_task_index {
                 Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            ListItem::new(format!("{}{}", prefix, t.title)).style(style)
+            ListItem::new(format!("{}{}{}", prefix, t.title, sync_indicator)).style(style)
         })
         .collect();
     let tasks_list = List::new(task_items).block(tasks_block);

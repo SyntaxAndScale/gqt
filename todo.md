@@ -8,7 +8,7 @@
 
 ## Persistence & Sync
 - [x] Phase 1: Setup & Schema (0.1.2)
-- [ ] Phase 2: Local CRUD (0.1.3)
+- [x] Phase 2: Local CRUD (0.1.3)
 - [ ] Phase 3: Sync Engine (0.1.4)
 
 ## Architecture
