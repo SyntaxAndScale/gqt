@@ -15,3 +15,6 @@
 - [x] CRUD: Read/List tasks implementation.
 - [ ] CRUD: Update task implementation.
 - [ ] CRUD: Delete task implementation.
+
+## Architecture
+- [x] Refactor API client into a decoupled module for future extraction as a standalone library.

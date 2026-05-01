@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::Deserialize;
-use crate::models::{Queue, Task};
+use crate::gqueues::models::{Queue, Task};
 
 pub struct GqueuesClient {
     client: Client,

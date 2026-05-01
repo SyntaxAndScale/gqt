@@ -16,8 +16,9 @@
 - **Note:** `updateTask` and `deleteTask` are not currently available in the public Beta API.
 
 ## Architecture
-- **TUI Layer:** Handles rendering and user input via Ratatui.
-- **State Management:** A central state object managing the current view and task data.
+- **TUI Layer:** Handles rendering and user input via Ratatui (`src/ui.rs`).
+- **State Management:** A central state object managing the current view and task data (`src/app.rs`).
+- **GQueues API Module:** A decoupled module (`src/gqueues/`) containing the API client and models, designed for future library extraction.
 - **Sync Engine:** Manages the local cache and handles background synchronization with the Gqueues API.
 - **CRDT Strategy:** 
     - Operations (Create, Update, Delete) are stored in a local **Transaction Log**.

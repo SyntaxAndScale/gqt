@@ -1,5 +1,5 @@
 mod app;
-mod client;
+mod gqueues;
 mod config;
 mod models;
 mod ui;
@@ -14,7 +14,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use crate::app::{App, Pane};
-use crate::client::GqueuesClient;
+use crate::gqueues::GqueuesClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {

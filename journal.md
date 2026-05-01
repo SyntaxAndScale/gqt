@@ -18,3 +18,11 @@
     - Created `README.md`.
     - Performed initial Git commit to `main` branch.
 
+## 2026-05-01
+- **Architectural Decision:** Plan to re-architect the code to decouple the GQueues API client into its own module, intended to be spun off as a standalone Rust library later.
+- **Refactoring:** Successfully moved GQueues API client and models to a dedicated `src/gqueues` module.
+    - Created `src/gqueues/models.rs`, `src/gqueues/client.rs`, and `src/gqueues/mod.rs`.
+    - Updated `App` and `main.rs` to use the new module structure.
+    - Verified compilation with `cargo check`.
+- **Versioning:** Incremented version to `0.1.1`.
+

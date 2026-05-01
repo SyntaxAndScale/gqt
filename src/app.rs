@@ -1,5 +1,5 @@
-use crate::models::{Queue, Task, Transaction};
-use crate::client::GqueuesClient;
+use crate::models::Transaction;
+use crate::gqueues::{GqueuesClient, Queue, Task};
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
