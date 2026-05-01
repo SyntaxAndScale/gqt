@@ -14,4 +14,7 @@
     - Initial fetch of queues and tasks.
     - Refresh tasks on queue selection (`Enter`).
     - Added loading and error states to UI.
-- Verified compilation with `cargo check`.
+    - Verified compilation with `cargo check`.
+    - Created `README.md`.
+    - Performed initial Git commit to `main` branch.
+
