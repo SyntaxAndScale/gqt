@@ -45,7 +45,8 @@ impl GqueuesClient {
             return Err(anyhow!("Failed to fetch queues: {}", resp.status()));
         }
 
-        let data: QueuesResponse = resp.json().await?;
+        let data: QueuesResponse = resp.json().await
+            .map_err(|e| anyhow!("Failed to decode queues response: {}", e))?;
         let mut all_queues = Vec::new();
         if let Some(mut q) = data.personal { all_queues.append(&mut q); }
         if let Some(mut q) = data.team { all_queues.append(&mut q); }
@@ -63,10 +64,11 @@ impl GqueuesClient {
             .await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to fetch tasks: {}", resp.status()));
+            return Err(anyhow!("Failed to fetch tasks for queue {}: {}", queue_key, resp.status()));
         }
 
-        let data: TasksResponse = resp.json().await?;
+        let data: TasksResponse = resp.json().await
+            .map_err(|e| anyhow!("Failed to decode tasks response for queue {}: {}", queue_key, e))?;
         Ok(data.items)
     }
 
@@ -101,17 +103,13 @@ impl GqueuesClient {
             return Err(anyhow!("Failed to create task: {}", resp.status()));
         }
 
-        #[derive(Deserialize)]
-        struct CreateResponse {
-            items: Vec<serde_json::Value>,
-        }
-
-        let data: CreateResponse = resp.json().await?;
-        let task_json = data.items.first()
+        let data: Vec<serde_json::Value> = resp.json().await?;
+        let task_json = data.first()
             .ok_or_else(|| anyhow!("No task returned in creation response"))?;
         
         // The API returns { status: "created", task: { ... } }
-        let task: Task = serde_json::from_value(task_json["task"].clone())?;
+        let task: Task = serde_json::from_value(task_json["task"].clone())
+            .map_err(|e| anyhow!("Failed to parse created task: {}. Response: {}", e, task_json))?;
         
         Ok(task)
     }

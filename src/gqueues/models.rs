@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct Queue {
     pub key: String,
     pub name: String,
+    #[serde(default)]
     pub is_inbox: bool,
 }
 
@@ -14,6 +15,7 @@ pub struct Task {
     pub key: String,
     pub title: String,
     pub notes: Option<String>,
+    #[serde(default)]
     pub completed: bool,
     pub queue_key: Option<String>,
 }

@@ -44,4 +44,11 @@
     - Improved UI feedback: refresh data on both sync success and error; display sync status messages.
 - **Versioning:** Incremented version to `0.1.4`.
 
+## 2026-05-01 (Robustness Fixes)
+- **API Client:** Improved robustness of response decoding.
+    - Fixed `createTask` response parsing to handle top-level arrays correctly.
+    - Added `#[serde(default)]` to non-essential model fields (`is_inbox`, `completed`) to prevent parsing failures when keys are omitted by the API.
+    - Enhanced error messages in `GqueuesClient` to provide more context when decoding fails.
+- **Versioning:** Incremented version to `0.1.5`.
+
 
