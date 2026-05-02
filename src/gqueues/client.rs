@@ -45,8 +45,12 @@ impl GqueuesClient {
             return Err(anyhow!("Failed to fetch queues: {}", resp.status()));
         }
 
-        let data: QueuesResponse = resp.json().await
-            .map_err(|e| anyhow!("Failed to decode queues response: {}", e))?;
+        let body = resp.text().await
+            .map_err(|e| anyhow!("Failed to read queues response body: {}", e))?;
+        log::debug!("getQueues response: {}", body);
+
+        let data: QueuesResponse = serde_json::from_str(&body)
+            .map_err(|e| anyhow!("Failed to decode queues response: {}. Body: {}", e, body))?;
         let mut all_queues = Vec::new();
         if let Some(mut q) = data.personal { all_queues.append(&mut q); }
         if let Some(mut q) = data.team { all_queues.append(&mut q); }
@@ -67,8 +71,12 @@ impl GqueuesClient {
             return Err(anyhow!("Failed to fetch tasks for queue {}: {}", queue_key, resp.status()));
         }
 
-        let data: TasksResponse = resp.json().await
-            .map_err(|e| anyhow!("Failed to decode tasks response for queue {}: {}", queue_key, e))?;
+        let body = resp.text().await
+            .map_err(|e| anyhow!("Failed to read tasks response body for queue {}: {}", queue_key, e))?;
+        log::debug!("getActiveTasks response for queue {}: {}", queue_key, body);
+
+        let data: TasksResponse = serde_json::from_str(&body)
+            .map_err(|e| anyhow!("Failed to decode tasks response for queue {}: {}. Body: {}", queue_key, e, body))?;
         Ok(data.items)
     }
 
@@ -103,13 +111,23 @@ impl GqueuesClient {
             return Err(anyhow!("Failed to create task: {}", resp.status()));
         }
 
-        let data: Vec<serde_json::Value> = resp.json().await?;
-        let task_json = data.first()
-            .ok_or_else(|| anyhow!("No task returned in creation response"))?;
+        let body = resp.text().await
+            .map_err(|e| anyhow!("Failed to read create task response body: {}", e))?;
+        log::debug!("createTask response: {}", body);
+
+        #[derive(Deserialize)]
+        struct CreateResponse {
+            results: Vec<serde_json::Value>,
+        }
+
+        let data: CreateResponse = serde_json::from_str(&body)
+            .map_err(|e| anyhow!("Failed to decode create task response: {}. Body: {}", e, body))?;
+        let task_json = data.results.first()
+            .ok_or_else(|| anyhow!("No task returned in creation response. Body: {}", body))?;
         
         // The API returns { status: "created", task: { ... } }
         let task: Task = serde_json::from_value(task_json["task"].clone())
-            .map_err(|e| anyhow!("Failed to parse created task: {}. Response: {}", e, task_json))?;
+            .map_err(|e| anyhow!("Failed to parse created task: {}. Item: {}", e, task_json))?;
         
         Ok(task)
     }

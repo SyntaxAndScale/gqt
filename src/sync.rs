@@ -33,11 +33,13 @@ impl SyncEngine {
             let interval = match self.sync_cycle().await {
                 Ok(_) => {
                     retry_count = 0;
+                    log::info!("Sync cycle completed successfully");
                     let _ = self.tx.send(SyncEvent::Complete).await;
                     Duration::from_secs(60)
                 }
                 Err(e) => {
                     retry_count += 1;
+                    log::error!("Sync cycle failed: {}", e);
                     // Exponential backoff: 5s, 10s, 20s, 40s, max 60s
                     let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
                     let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;

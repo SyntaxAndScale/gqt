@@ -51,4 +51,10 @@
     - Enhanced error messages in `GqueuesClient` to provide more context when decoding fails.
 - **Versioning:** Incremented version to `0.1.5`.
 
+## 2026-05-02 (API Optimization & Resilience)
+- **API Client:** Fixed `createTask` response parsing to expect `{"results": [...]}` object wrapper.
+- **Logging:** Implemented file logging using `simplelog`. All API interactions and sync events are now logged to `gqt.log` with DEBUG level detail.
+- **Robustness:** Added debug logging of raw response bodies and improved error context in `GqueuesClient`.
+- **Versioning:** Incremented version to `0.1.6`.
+
 

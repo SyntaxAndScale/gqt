@@ -22,6 +22,14 @@ use crate::sync::{SyncEngine, SyncEvent};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logging
+    let _ = simplelog::WriteLogger::init(
+        simplelog::LevelFilter::Debug,
+        simplelog::Config::default(),
+        std::fs::File::create("gqt.log")?,
+    );
+    log::info!("Starting Gqueues TUI");
+
     // Load config
     let gq_config = config::load_config()?;
     let client = std::sync::Arc::new(GqueuesClient::new(gq_config.api_endpoint, gq_config.access_token));

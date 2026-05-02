@@ -12,7 +12,11 @@
 - [x] Phase 3: Sync Engine (0.1.4)
     - [x] Handle idempotency keys in transaction log.
     - [x] Implement background push/pull.
-    - [ ] Optimize Pull Logic (deltas / active queue priority).
+    - [x] Fix decoding errors and add logging.
+- [ ] Phase 4: Sync Optimization (0.1.6)
+    - [ ] Prioritize active queue.
+    - [ ] Metadata-first sync (lastModified check).
+    - [ ] Respect Retry-After header.
 
 ## Architecture
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
