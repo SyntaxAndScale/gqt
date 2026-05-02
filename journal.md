@@ -57,4 +57,22 @@
 - **Robustness:** Added debug logging of raw response bodies and improved error context in `GqueuesClient`.
 - **Versioning:** Incremented version to `0.1.6`.
 
+## 2026-05-02 (Sync Optimization & Rate Limiting)
+- **Persistence Phase 4:** Optimized background synchronization to prevent `429 Too Many Requests`.
+    - **Metadata-First Sync:** The engine now fetches queue metadata first and only pulls tasks if the `lastModified` timestamp has changed on the server.
+    - **Prioritized Sync:** TUI shares the focused queue key with the Sync Engine, which ensures your active view is always reconciled first.
+    - **Rate Limit Resilience:** Implemented a custom `GqueuesError` and refactored the engine to parse and respect the `Retry-After` header from API responses.
+    - **Decoupled UI:** Refactored the TUI to be purely database-driven; navigating queues no longer triggers blocking API calls.
+- **XDG Compliance:** Migrated configuration loading to `$XDG_CONFIG_HOME/gqt/config.json`.
+- **Versioning:** Incremented version to `0.1.7`.
+
+## 2026-05-02 (Aesthetic UI Enhancements)
+- **TUI:** Replaced the large, red "Error" block with a single-line, compact status bar at the bottom.
+- **Status Messaging:** Implemented descriptive emojis for status updates:
+    - `✅` for successful synchronization.
+    - `❌` for errors or failures.
+    - `⏳` for operations in progress.
+- **State Management:** Refactored `App` to manage a unified `status` string, simplifying visual feedback.
+- **Versioning:** Incremented version to `0.1.8`.
+
 

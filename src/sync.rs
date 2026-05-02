@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use crate::db::Database;
 use crate::gqueues::GqueuesClient;
+use crate::gqueues::client::GqueuesError;
 use crate::models::Operation;
 
 pub enum SyncEvent {
@@ -14,6 +15,7 @@ pub enum SyncEvent {
 pub struct SyncEngine {
     client: Arc<GqueuesClient>,
     db: Arc<Mutex<Database>>,
+    active_queue_key: Arc<Mutex<Option<String>>>,
     tx: mpsc::Sender<SyncEvent>,
 }
 
@@ -21,9 +23,10 @@ impl SyncEngine {
     pub fn new(
         client: Arc<GqueuesClient>,
         db: Arc<Mutex<Database>>,
+        active_queue_key: Arc<Mutex<Option<String>>>,
         tx: mpsc::Sender<SyncEvent>,
     ) -> Self {
-        Self { client, db, tx }
+        Self { client, db, active_queue_key, tx }
     }
 
     pub async fn run(&mut self) {
@@ -38,12 +41,28 @@ impl SyncEngine {
                     Duration::from_secs(60)
                 }
                 Err(e) => {
-                    retry_count += 1;
-                    log::error!("Sync cycle failed: {}", e);
-                    // Exponential backoff: 5s, 10s, 20s, 40s, max 60s
-                    let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
-                    let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
-                    backoff
+                    if let Some(gq_err) = e.downcast_ref::<GqueuesError>() {
+                        match gq_err {
+                            GqueuesError::RateLimited(dur) => {
+                                log::warn!("Rate limited. Waiting for {:?}", dur);
+                                let _ = self.tx.send(SyncEvent::Error(format!("Rate limited. Waiting {:?}...", dur))).await;
+                                *dur
+                            }
+                            _ => {
+                                retry_count += 1;
+                                log::error!("Sync cycle failed: {}", e);
+                                let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
+                                let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                                backoff
+                            }
+                        }
+                    } else {
+                        retry_count += 1;
+                        log::error!("Sync cycle failed with non-Gqueues error: {}", e);
+                        let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
+                        let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                        backoff
+                    }
                 }
             };
 
@@ -79,40 +98,60 @@ impl SyncEngine {
                             db.update_task_remote_key(&task.key, &remote_task.key)?;
                             db.mark_transaction_synced(&tx_id)?;
                         }
-                        Err(e) => return Err(e),
+                        Err(e) => return Err(anyhow!(e)),
                     }
                 }
-                _ => {
-                    // Update/Delete not supported by API yet
-                }
+                _ => {}
             }
         }
         Ok(())
     }
 
     async fn pull_remote_changes(&self) -> Result<()> {
-        let queues = self.client.get_queues().await?;
-        {
-            let db = self.db.lock().unwrap();
-            for q in &queues {
-                db.upsert_queue(q)?;
-            }
-        }
-
-        // For now, pull tasks for all queues we have
-        // Future optimization: only active or modified
-        let current_queues = {
-            let db = self.db.lock().unwrap();
-            db.get_queues()?
+        // 1. Sync Queues Metadata
+        let api_queues = self.client.get_queues().await
+            .map_err(|e| anyhow!(e))?;
+        
+        let active_key = {
+            let active = self.active_queue_key.lock().unwrap();
+            active.clone()
         };
 
-        for queue in current_queues {
-            let tasks = self.client.get_tasks(&queue.key).await?;
-            let db = self.db.lock().unwrap();
-            for mut t in tasks {
-                // Ensure queue_key is set (API might omit it as it's implicit in the request)
-                t.queue_key = Some(queue.key.clone());
-                db.upsert_task(&t)?;
+        // 2. Identify priority queue
+        let mut queues_to_sync = Vec::new();
+        for q in api_queues {
+            let is_priority = active_key.as_ref() == Some(&q.key);
+            queues_to_sync.push((q, is_priority));
+        }
+
+        // Sort: priority first
+        queues_to_sync.sort_by(|a, b| b.1.cmp(&a.1));
+
+        for (api_queue, is_priority) in queues_to_sync {
+            let should_pull = {
+                let db = self.db.lock().unwrap();
+                let local_modified = db.get_queue_last_modified(&api_queue.key)?;
+                
+                // Pull if it's the priority queue OR if metadata says it changed
+                is_priority || local_modified.as_deref() != api_queue.last_modified.as_deref()
+            };
+
+            if should_pull {
+                log::info!("Pulling tasks for queue: {} (priority: {})", api_queue.name, is_priority);
+                let tasks = self.client.get_tasks(&api_queue.key).await
+                    .map_err(|e| anyhow!(e))?;
+                
+                let db = self.db.lock().unwrap();
+                // Update queue metadata first (to update local_id mapping and last_modified)
+                db.upsert_queue(&api_queue)?;
+                
+                for mut t in tasks {
+                    t.queue_key = Some(api_queue.key.clone());
+                    db.upsert_task(&t)?;
+                }
+                db.update_queue_sync_time(&api_queue.key)?;
+            } else {
+                log::debug!("Skipping pull for queue: {} (no changes detected)", api_queue.name);
             }
         }
 

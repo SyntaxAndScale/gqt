@@ -7,6 +7,7 @@ pub struct Queue {
     pub name: String,
     #[serde(default)]
     pub is_inbox: bool,
+    pub last_modified: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

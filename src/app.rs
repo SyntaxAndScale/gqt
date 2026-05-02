@@ -12,14 +12,14 @@ pub enum Pane {
 pub struct App {
     pub client: Arc<GqueuesClient>,
     pub db: Arc<Mutex<Database>>,
+    pub active_queue_key: Arc<Mutex<Option<String>>>,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
     pub selected_queue_index: usize,
     pub selected_task_index: usize,
     pub active_pane: Pane,
     pub running: bool,
-    pub error: Option<String>,
-    pub loading: bool,
+    pub status: String,
 }
 
 impl App {
@@ -27,14 +27,14 @@ impl App {
         Self {
             client: Arc::new(client),
             db: Arc::new(Mutex::new(db)),
+            active_queue_key: Arc::new(Mutex::new(None)),
             queues: Vec::new(),
             tasks: Vec::new(),
             selected_queue_index: 0,
             selected_task_index: 0,
             active_pane: Pane::Queues,
             running: true,
-            error: None,
-            loading: false,
+            status: "Ready".into(),
         }
     }
 

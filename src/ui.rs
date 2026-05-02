@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(if app.error.is_some() { 3 } else { 0 }),
+            Constraint::Length(1), // Status bar
         ])
         .split(frame.area());
 
@@ -26,13 +26,8 @@ pub fn render(frame: &mut Frame, app: &App) {
         .split(chunks[0]);
 
     // Queues Pane
-    let queues_title = if app.loading && app.active_pane == Pane::Queues {
-        " Queues (loading...) "
-    } else {
-        " Queues "
-    };
     let queues_block = Block::default()
-        .title(queues_title)
+        .title(" Queues ")
         .borders(Borders::ALL)
         .border_style(if app.active_pane == Pane::Queues {
             Style::default().fg(Color::Yellow)
@@ -53,13 +48,8 @@ pub fn render(frame: &mut Frame, app: &App) {
     frame.render_widget(queues_list, main_chunks[0]);
 
     // Tasks Pane
-    let tasks_title = if app.loading && app.active_pane == Pane::Tasks {
-        " Tasks (loading...) "
-    } else {
-        " Tasks "
-    };
     let tasks_block = Block::default()
-        .title(tasks_title)
+        .title(" Tasks ")
         .borders(Borders::ALL)
         .border_style(if app.active_pane == Pane::Tasks {
             Style::default().fg(Color::Yellow)
@@ -107,13 +97,16 @@ pub fn render(frame: &mut Frame, app: &App) {
     let details_paragraph = Paragraph::new(detail_text).block(details_block);
     frame.render_widget(details_paragraph, main_chunks[2]);
 
-    // Error Pane
-    if let Some(err) = &app.error {
-        let error_block = Block::default()
-            .title(" Error ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red));
-        let error_paragraph = Paragraph::new(err.as_str()).block(error_block);
-        frame.render_widget(error_paragraph, chunks[1]);
-    }
+    // Status Bar
+    let status_style = if app.status.contains("❌") {
+        Style::default().fg(Color::Red)
+    } else if app.status.contains("✅") {
+        Style::default().fg(Color::Green)
+    } else if app.status.contains("⏳") {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default().add_modifier(Modifier::DIM)
+    };
+    let status_bar = Paragraph::new(app.status.as_str()).style(status_style);
+    frame.render_widget(status_bar, chunks[1]);
 }

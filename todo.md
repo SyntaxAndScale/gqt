@@ -13,13 +13,20 @@
     - [x] Handle idempotency keys in transaction log.
     - [x] Implement background push/pull.
     - [x] Fix decoding errors and add logging.
-- [ ] Phase 4: Sync Optimization (0.1.6)
-    - [ ] Prioritize active queue.
-    - [ ] Metadata-first sync (lastModified check).
-    - [ ] Respect Retry-After header.
+- [x] Phase 4: Sync Optimization (0.1.6)
+    - [x] Prioritize active queue.
+    - [x] Metadata-first sync (lastModified check).
+    - [x] Respect Retry-After header.
+    - [x] XDG config migration.
 
 ## Architecture
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
+
+## UI & Navigation
+- [ ] Implement categorized/grouped queues in the left pane.
+    - [ ] Add category support to database schema.
+    - [ ] Implement collapsible/expandable category headers.
+    - [ ] Update UI to render grouped list.
 
 ## Future Work
 - [ ] Implement GQueues API authentication workflow (user input for API key).

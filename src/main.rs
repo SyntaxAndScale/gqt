@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     
     // Setup Sync Engine
     let (sync_tx, mut sync_rx) = mpsc::channel(32);
-    let mut sync_engine = SyncEngine::new(client, app.db.clone(), sync_tx);
+    let mut sync_engine = SyncEngine::new(client, app.db.clone(), app.active_queue_key.clone(), sync_tx);
     tokio::spawn(async move {
         sync_engine.run().await;
     });
@@ -75,9 +75,7 @@ async fn main() -> Result<()> {
         while let Ok(event) = sync_rx.try_recv() {
             match event {
                 SyncEvent::Complete => {
-                    app.error = None;
-                    app.loading = false; // Just in case
-                    app.error = Some("Sync successful".into()); // Re-use error field for status message for now
+                    app.status = "✅ Sync successful".into();
                     // Reload data from DB
                     let db = app.db.lock().unwrap();
                     if let Ok(queues) = db.get_queues() {
@@ -90,7 +88,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 SyncEvent::Error(e) => {
-                    app.error = Some(e);
+                    app.status = format!("❌ {}", e);
                     // Still reload data because some push operations might have succeeded
                     let db = app.db.lock().unwrap();
                     if let Ok(queues) = db.get_queues() {
@@ -115,21 +113,16 @@ async fn main() -> Result<()> {
                         if app.active_pane == Pane::Queues {
                             if let Some(queue) = app.selected_queue() {
                                 let queue_key = queue.key.clone();
-                                app.loading = true;
-                                terminal.draw(|f| ui::render(f, &app))?; // Show loading
-                                
-                                // Try fetching from API
-                                match app.client.get_tasks(&queue_key).await {
-                                    Ok(tasks) => {
-                                        let db = app.db.lock().unwrap();
-                                        for t in &tasks {
-                                            let _ = db.upsert_task(t);
-                                        }
-                                    }
-                                    Err(e) => app.error = Some(format!("API fetch failed: {}. Showing local data.", e)),
+                                // Set active queue for sync engine
+                                {
+                                    let mut active = app.active_queue_key.lock().unwrap();
+                                    *active = Some(queue_key.clone());
                                 }
-
-                                // Always load from DB (which now has latest API data if it succeeded)
+                                app.status = "⏳ Loading tasks...".into();
+                                
+                                // We no longer call the API directly here to avoid blocking and 429s.
+                                // The SyncEngine will prioritize this queue.
+                                // For now, we just reload from DB.
                                 {
                                     let db = app.db.lock().unwrap();
                                     match db.get_tasks(&queue_key) {
@@ -137,30 +130,32 @@ async fn main() -> Result<()> {
                                             app.tasks = tasks;
                                             app.selected_task_index = 0;
                                         }
-                                        Err(e) => app.error = Some(format!("Failed to load local tasks: {}", e)),
+                                        Err(e) => app.status = format!("❌ Local DB error: {}", e),
                                     }
                                 }
-                                app.loading = false;
                             }
                         }
                     }
                     KeyCode::Char('a') => {
                         if let Some(queue) = app.selected_queue() {
+                            let queue_key = queue.key.clone();
+                            app.status = "⏳ Creating local task...".into();
                             // Mock task creation for now (could be an input field later)
                             let new_task = crate::gqueues::models::Task {
                                 key: "".into(),
                                 title: "New Local Task".into(),
                                 notes: Some("Created offline".into()),
                                 completed: false,
-                                queue_key: Some(queue.key.clone()),
+                                queue_key: Some(queue_key),
                             };
                             let db = app.db.lock().unwrap();
                             match db.add_task_local(new_task) {
                                 Ok(task) => {
                                     app.tasks.push(task);
                                     app.selected_task_index = app.tasks.len() - 1;
+                                    app.status = "✅ Local task created".into();
                                 }
-                                Err(e) => app.error = Some(format!("Failed to create local task: {}", e)),
+                                Err(e) => app.status = format!("❌ Failed to create local task: {}", e),
                             }
                         }
                     }

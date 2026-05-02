@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use directories::ProjectDirs;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 use std::path::PathBuf;
 
@@ -39,7 +39,8 @@ impl Database {
                 remote_key TEXT UNIQUE,
                 name TEXT NOT NULL,
                 is_inbox INTEGER NOT NULL,
-                last_modified TEXT NOT NULL
+                last_modified TEXT NOT NULL,
+                last_synced_at TEXT
             )",
             [],
         )?;
@@ -75,8 +76,8 @@ impl Database {
     pub fn upsert_queue(&self, queue: &Queue) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
-            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified, last_synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(remote_key) DO UPDATE SET
                 name = excluded.name,
                 is_inbox = excluded.is_inbox,
@@ -86,19 +87,21 @@ impl Database {
                 &queue.key,
                 &queue.name,
                 if queue.is_inbox { 1 } else { 0 },
-                now,
+                queue.last_modified.as_deref().unwrap_or(&now),
+                &now,
             ),
         )?;
         Ok(())
     }
 
     pub fn get_queues(&self) -> Result<Vec<Queue>> {
-        let mut stmt = self.conn.prepare("SELECT remote_key, name, is_inbox FROM queues")?;
+        let mut stmt = self.conn.prepare("SELECT remote_key, name, is_inbox, last_modified FROM queues")?;
         let rows = stmt.query_map([], |row| {
             Ok(Queue {
                 key: row.get(0)?,
                 name: row.get(1)?,
                 is_inbox: row.get::<_, i32>(2)? != 0,
+                last_modified: row.get(3)?,
             })
         })?;
 
@@ -208,6 +211,21 @@ impl Database {
             txs.push(tx?);
         }
         Ok(txs)
+    }
+
+    pub fn update_queue_sync_time(&self, queue_key: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE queues SET last_synced_at = ?1 WHERE remote_key = ?2",
+            [now, queue_key.to_string()],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_queue_last_modified(&self, queue_key: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare("SELECT last_modified FROM queues WHERE remote_key = ?1")?;
+        let res = stmt.query_row([queue_key], |row| row.get(0)).optional()?;
+        Ok(res)
     }
 
     pub fn mark_transaction_synced(&self, id: &str) -> Result<()> {
