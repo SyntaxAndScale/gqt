@@ -16,7 +16,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use tokio::sync::mpsc;
 
-use crate::app::{App, Pane};
+use crate::app::{App, Pane, NavEntry};
 use crate::gqueues::GqueuesClient;
 use crate::sync::{SyncEngine, SyncEvent};
 
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    if let Some(queue) = app.queues.get(app.selected_queue_index) {
+                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(app.selected_nav_index) {
                         if let Ok(tasks) = db.get_tasks(&queue.key) {
                             app.tasks = tasks;
                         }
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    if let Some(queue) = app.queues.get(app.selected_queue_index) {
+                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(app.selected_nav_index) {
                         if let Ok(tasks) = db.get_tasks(&queue.key) {
                             app.tasks = tasks;
                         }
@@ -111,26 +111,36 @@ async fn main() -> Result<()> {
                     KeyCode::BackTab => app.previous_pane(),
                     KeyCode::Enter => {
                         if app.active_pane == Pane::Queues {
-                            if let Some(queue) = app.selected_queue() {
-                                let queue_key = queue.key.clone();
-                                // Set active queue for sync engine
-                                {
-                                    let mut active = app.active_queue_key.lock().unwrap();
-                                    *active = Some(queue_key.clone());
-                                }
-                                app.status = "⏳ Loading tasks...".into();
-                                
-                                // We no longer call the API directly here to avoid blocking and 429s.
-                                // The SyncEngine will prioritize this queue.
-                                // For now, we just reload from DB.
-                                {
-                                    let db = app.db.lock().unwrap();
-                                    match db.get_tasks(&queue_key) {
-                                        Ok(tasks) => {
-                                            app.tasks = tasks;
-                                            app.selected_task_index = 0;
+                            let nav_entries = app.get_nav_entries();
+                            if let Some(entry) = nav_entries.get(app.selected_nav_index) {
+                                match entry {
+                                    NavEntry::Category { name, .. } => {
+                                        if app.expanded_categories.contains(name) {
+                                            app.expanded_categories.remove(name);
+                                        } else {
+                                            app.expanded_categories.insert(name.clone());
                                         }
-                                        Err(e) => app.status = format!("❌ Local DB error: {}", e),
+                                    }
+                                    NavEntry::Queue(queue) => {
+                                        let queue_key = queue.key.clone();
+                                        // Set active queue for sync engine
+                                        {
+                                            let mut active = app.active_queue_key.lock().unwrap();
+                                            *active = Some(queue_key.clone());
+                                        }
+                                        app.status = format!("⏳ Loading {}...", queue.name);
+                                        
+                                        {
+                                            let db = app.db.lock().unwrap();
+                                            match db.get_tasks(&queue_key) {
+                                                Ok(tasks) => {
+                                                    app.tasks = tasks;
+                                                    app.selected_task_index = 0;
+                                                    app.status = format!("✅ Loaded {}", queue.name);
+                                                }
+                                                Err(e) => app.status = format!("❌ Local DB error: {}", e),
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -139,7 +149,7 @@ async fn main() -> Result<()> {
                     KeyCode::Char('a') => {
                         if let Some(queue) = app.selected_queue() {
                             let queue_key = queue.key.clone();
-                            app.status = "⏳ Creating local task...".into();
+                            app.status = format!("⏳ Creating task in {}...", queue.name);
                             // Mock task creation for now (could be an input field later)
                             let new_task = crate::gqueues::models::Task {
                                 key: "".into(),
@@ -162,8 +172,9 @@ async fn main() -> Result<()> {
                     KeyCode::Down => {
                         match app.active_pane {
                             Pane::Queues => {
-                                if app.selected_queue_index < app.queues.len().saturating_sub(1) {
-                                    app.selected_queue_index += 1;
+                                let nav_entries = app.get_nav_entries();
+                                if app.selected_nav_index < nav_entries.len().saturating_sub(1) {
+                                    app.selected_nav_index += 1;
                                 }
                             }
                             Pane::Tasks => {
@@ -177,8 +188,8 @@ async fn main() -> Result<()> {
                     KeyCode::Up => {
                         match app.active_pane {
                             Pane::Queues => {
-                                if app.selected_queue_index > 0 {
-                                    app.selected_queue_index -= 1;
+                                if app.selected_nav_index > 0 {
+                                    app.selected_nav_index -= 1;
                                 }
                             }
                             Pane::Tasks => {

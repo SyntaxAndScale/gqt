@@ -40,7 +40,11 @@ impl Database {
                 name TEXT NOT NULL,
                 is_inbox INTEGER NOT NULL,
                 last_modified TEXT NOT NULL,
-                last_synced_at TEXT
+                last_synced_at TEXT,
+                category TEXT,
+                category_name TEXT,
+                team_name TEXT,
+                scope TEXT
             )",
             [],
         )?;
@@ -76,12 +80,16 @@ impl Database {
     pub fn upsert_queue(&self, queue: &Queue) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
-            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified, last_synced_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified, last_synced_at, category, category_name, team_name, scope)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(remote_key) DO UPDATE SET
                 name = excluded.name,
                 is_inbox = excluded.is_inbox,
-                last_modified = excluded.last_modified",
+                last_modified = excluded.last_modified,
+                category = excluded.category,
+                category_name = excluded.category_name,
+                team_name = excluded.team_name,
+                scope = excluded.scope",
             (
                 Uuid::new_v4().to_string(),
                 &queue.key,
@@ -89,19 +97,27 @@ impl Database {
                 if queue.is_inbox { 1 } else { 0 },
                 queue.last_modified.as_deref().unwrap_or(&now),
                 &now,
+                queue.category.as_deref(),
+                queue.category_name.as_deref(),
+                queue.team_name.as_deref(),
+                queue.scope.as_deref(),
             ),
         )?;
         Ok(())
     }
 
     pub fn get_queues(&self) -> Result<Vec<Queue>> {
-        let mut stmt = self.conn.prepare("SELECT remote_key, name, is_inbox, last_modified FROM queues")?;
+        let mut stmt = self.conn.prepare("SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope FROM queues")?;
         let rows = stmt.query_map([], |row| {
             Ok(Queue {
                 key: row.get(0)?,
                 name: row.get(1)?,
                 is_inbox: row.get::<_, i32>(2)? != 0,
                 last_modified: row.get(3)?,
+                category: row.get(4)?,
+                category_name: row.get(5)?,
+                team_name: row.get(6)?,
+                scope: row.get(7)?,
             })
         })?;
 

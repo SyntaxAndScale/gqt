@@ -76,9 +76,18 @@ impl GqueuesClient {
         let data: QueuesResponse = serde_json::from_str(&body)
             .map_err(|e| GqueuesError::InternalError(format!("Failed to decode queues response: {}. Body: {}", e, body)))?;
         let mut all_queues = Vec::new();
-        if let Some(mut q) = data.personal { all_queues.append(&mut q); }
-        if let Some(mut q) = data.team { all_queues.append(&mut q); }
-        if let Some(mut q) = data.shared { all_queues.append(&mut q); }
+        if let Some(mut q) = data.personal { 
+            for item in &mut q { item.scope = Some("Personal".into()); }
+            all_queues.append(&mut q); 
+        }
+        if let Some(mut q) = data.team { 
+            for item in &mut q { item.scope = Some("Team".into()); }
+            all_queues.append(&mut q); 
+        }
+        if let Some(mut q) = data.shared { 
+            for item in &mut q { item.scope = Some("Shared".into()); }
+            all_queues.append(&mut q); 
+        }
         
         Ok(all_queues)
     }

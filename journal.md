@@ -75,4 +75,17 @@
 - **State Management:** Refactored `App` to manage a unified `status` string, simplifying visual feedback.
 - **Versioning:** Incremented version to `0.1.8`.
 
+## 2026-05-02 (Categorized Navigation)
+- **UI:** Implemented categorized and collapsible queues in the left navigation pane.
+    - Queues are now grouped under "Personal", "Team", and "Shared" headers.
+    - Category headers are collapsed by default and use `▶` / `▼` indicators.
+    - Queues within categories are indented by one space for visual hierarchy.
+- **State Management:** Introduced `NavEntry` enum to manage the unified list of categories and queues.
+- **DB & API:** Added `category` support to the database schema and API client logic.
+- **Dynamic Categorization:** Refactored navigation to use the API-provided `categoryName` and `teamName`.
+    - Queues are now grouped by their actual GQueues categories (e.g., "(Archive) Projects", "Shared w/ Yen").
+    - Implemented priority sorting: "Personal" and "Inbox" first, followed by alphabetical, with "Archive" categories pushed to the bottom.
+    - Decoupled API client from display logic, following the mandate that the consuming application handles data processing/filtering.
+- **Versioning:** Incremented version to `0.1.10`.
+
 

@@ -23,11 +23,15 @@
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
 
 ## UI & Navigation
-- [ ] Implement categorized/grouped queues in the left pane.
-    - [ ] Add category support to database schema.
-    - [ ] Implement collapsible/expandable category headers.
-    - [ ] Update UI to render grouped list.
+- [x] Implement categorized/grouped queues in the left pane.
+    - [x] Add category support to database schema.
+    - [x] Implement collapsible/expandable category headers.
+    - [x] Update UI to render grouped list.
 
 ## Future Work
 - [ ] Implement GQueues API authentication workflow (user input for API key).
 - [ ] Change configuration file format from .json to .toml
+- [ ] When initializing a database for the first time, if a gqueues api key is available, then the user experience should be that the list of queues is queried and displayed, but the only tasks that are initially fetched are for the Inbox queue. The other queues can/will be queried either as they are selected, or as part of a background sync. The sync process should display the number of queues and/or estimated tasks remain to be queried.
+- [ ] When the program is launched and there is no existing database or configuration, the user should be prompted to either (a) input a Gqueues API key to sync from an existing account (b) specify the path of an existing local gqt database, (c) create a new local-only GQT database (and the user should specify the  path with an XDG default path suggested)
+- [ ] The task detail on the right pane should include the url to the web client's task so a user can click on the link (in some terminal emulators) to go to the official gqueues web client (assuming the task is sync'd to gqueues - if not, then no url should be displayed)
+- [ ] when the status bar shows a successful sync, it should include text about the time it was last sync'd in ISO 8601 timestamp format adjusted for the user's local (system) time

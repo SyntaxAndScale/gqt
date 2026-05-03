@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{App, Pane};
+use crate::app::{App, Pane, NavEntry};
 
 pub fn render(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -34,14 +34,27 @@ pub fn render(frame: &mut Frame, app: &App) {
         } else {
             Style::default()
         });
-    let queue_items: Vec<ListItem> = app.queues.iter().enumerate()
-        .map(|(i, q)| {
-            let style = if i == app.selected_queue_index {
+    
+    let nav_entries = app.get_nav_entries();
+    let queue_items: Vec<ListItem> = nav_entries.iter().enumerate()
+        .map(|(i, entry)| {
+            let style = if i == app.selected_nav_index {
                 Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            ListItem::new(q.name.as_str()).style(style)
+
+            match entry {
+                NavEntry::Category { name, expanded } => {
+                    let icon = if *expanded { "▼" } else { "▶" };
+                    ListItem::new(format!("{} {}", icon, name.to_uppercase()))
+                        .style(style.add_modifier(Modifier::BOLD))
+                }
+                NavEntry::Queue(q) => {
+                    ListItem::new(format!("  {}", q.name))
+                        .style(style)
+                }
+            }
         })
         .collect();
     let queues_list = List::new(queue_items).block(queues_block);

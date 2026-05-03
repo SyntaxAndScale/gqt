@@ -8,6 +8,11 @@ pub struct Queue {
     #[serde(default)]
     pub is_inbox: bool,
     pub last_modified: Option<String>,
+    pub category: Option<String>,
+    pub category_name: Option<String>,
+    pub team_name: Option<String>,
+    #[serde(skip)]
+    pub scope: Option<String>, // "Personal", "Team", or "Shared"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
