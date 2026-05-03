@@ -110,17 +110,79 @@ pub fn render(frame: &mut Frame, app: &App) {
         } else {
             Style::default()
         });
-    let detail_text = if let Some(task) = app.selected_task() {
-        format!(
-            "Title: {}\nStatus: {}\nNotes:\n{}",
-            task.title,
-            if task.completed { "Completed" } else { "Open" },
-            task.notes.as_deref().unwrap_or("None")
-        )
+    
+    let mut details_text = Vec::new();
+    if let Some(task) = app.selected_task() {
+        // 1. Tags
+        if let Some(ref tags) = task.tags {
+            if !tags.is_empty() {
+                let mut tag_spans = Vec::new();
+                for tag in tags {
+                    tag_spans.push(ratatui::text::Span::styled(
+                        format!(" #{} ", tag),
+                        Style::default().bg(Color::Yellow).fg(Color::White).add_modifier(Modifier::BOLD),
+                    ));
+                    tag_spans.push(ratatui::text::Span::raw(" "));
+                }
+                details_text.push(ratatui::text::Line::from(tag_spans));
+                details_text.push(ratatui::text::Line::from(""));
+            }
+        }
+
+        // 2. Title
+        details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+            task.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
+        )));
+        details_text.push(ratatui::text::Line::from(""));
+
+        // 3. Assignees
+        if let Some(ref assignments) = task.assignments {
+            if !assignments.is_empty() {
+                let assignee_names: Vec<String> = assignments.iter().map(|a| a.name.clone()).collect();
+                details_text.push(ratatui::text::Line::from(format!("👤 {}", assignee_names.join(", "))));
+                details_text.push(ratatui::text::Line::from(""));
+            }
+        }
+
+        // 4. Dates & Repeat
+        let mut date_spans = Vec::new();
+        if let Some(ref cd) = task.creation_date {
+            date_spans.push(ratatui::text::Span::styled("Created: ", Style::default().add_modifier(Modifier::DIM)));
+            date_spans.push(ratatui::text::Span::raw(format!("{}  ", cd.raw)));
+        }
+        if let Some(ref dd) = task.due_date {
+            if let Some(ref rd) = dd.raw_date {
+                date_spans.push(ratatui::text::Span::styled("Due: ", Style::default().add_modifier(Modifier::DIM).fg(Color::Magenta)));
+                date_spans.push(ratatui::text::Span::styled(format!("{}  ", rd), Style::default().fg(Color::Magenta)));
+            }
+        }
+        
+        let repeats_str = match &task.repeats {
+            serde_json::Value::Bool(b) => if *b { Some("Repeats".to_string()) } else { None },
+            serde_json::Value::Object(obj) => obj.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()).or(Some("Repeats".to_string())),
+            _ => None,
+        };
+        if let Some(r) = repeats_str {
+            date_spans.push(ratatui::text::Span::styled("🔁 ", Style::default().fg(Color::Blue)));
+            date_spans.push(ratatui::text::Span::raw(r));
+        }
+
+        if !date_spans.is_empty() {
+            details_text.push(ratatui::text::Line::from(date_spans));
+            details_text.push(ratatui::text::Line::from(""));
+        }
+
+        // 5. Notes
+        details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled("Notes:", Style::default().add_modifier(Modifier::UNDERLINED))));
+        details_text.push(ratatui::text::Line::from(task.notes.clone().unwrap_or_else(|| "None".to_string())));
     } else {
-        "No task selected".to_string()
-    };
-    let details_paragraph = Paragraph::new(detail_text).block(details_block);
+        details_text.push(ratatui::text::Line::from("No task selected"));
+    }
+
+    let details_paragraph = Paragraph::new(details_text)
+        .block(details_block)
+        .wrap(ratatui::widgets::Wrap { trim: true });
     frame.render_widget(details_paragraph, main_chunks[2]);
 
     // Status Bar

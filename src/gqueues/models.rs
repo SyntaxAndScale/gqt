@@ -26,4 +26,29 @@ pub struct Task {
     pub queue_key: Option<String>,
     pub parent_key: Option<String>,
     pub subitems: Option<Vec<Task>>,
+    pub tags: Option<Vec<String>>,
+    pub assignments: Option<Vec<Assignment>>,
+    pub creation_date: Option<DateInfo>,
+    pub due_date: Option<DueDateInfo>,
+    #[serde(default)]
+    pub repeats: serde_json::Value, // Can be bool or object
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Assignment {
+    pub email: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DateInfo {
+    pub raw: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DueDateInfo {
+    pub raw_date: Option<String>,
 }

@@ -108,4 +108,15 @@
     - Refactored `upsert_task` to recursively process sub-tasks and preserve relationships.
 - **Versioning:** Incremented version to `0.1.12`.
 
+## 2026-05-02 (Enhanced Task Details)
+- **UI:** Upgraded the right pane (Task Details) with rich formatting and more metadata.
+    - **Tags:** Displayed on a single line with `white` text on a `yellow` background, prepended by `#`.
+    - **Assignments:** Shows assignee names with a `👤` icon.
+    - **Dates & Repeat:** Unified display of Creation Date, Due Date, and Repeat information on a single line with stylized magenta/blue accents.
+    - **Notes:** Now has an underlined header and supports word-wrapping.
+- **DB & API:**
+    - Updated `Task` model and database schema to persist `tags`, `assignments`, `creation_date`, `due_date`, and `repeats`.
+    - Implemented JSON serialization for complex fields in SQLite.
+- **Versioning:** Incremented version to `0.1.13`.
+
 

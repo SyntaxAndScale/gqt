@@ -60,6 +60,11 @@ impl Database {
                 notes TEXT,
                 completed INTEGER NOT NULL,
                 last_modified TEXT NOT NULL,
+                tags TEXT,
+                assignments TEXT,
+                creation_date TEXT,
+                due_date TEXT,
+                repeats TEXT,
                 FOREIGN KEY(queue_id) REFERENCES queues(local_id)
             )",
             [],
@@ -187,15 +192,26 @@ impl Database {
 
     pub fn upsert_task(&self, task: &Task) -> Result<()> {
         let now = Utc::now().to_rfc3339();
+        let tags_json = serde_json::to_string(&task.tags)?;
+        let assignments_json = serde_json::to_string(&task.assignments)?;
+        let creation_date_json = serde_json::to_string(&task.creation_date)?;
+        let due_date_json = serde_json::to_string(&task.due_date)?;
+        let repeats_json = serde_json::to_string(&task.repeats)?;
+
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
+             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(remote_key) DO UPDATE SET
                 title = excluded.title,
                 notes = excluded.notes,
                 completed = excluded.completed,
                 parent_key = excluded.parent_key,
-                last_modified = excluded.last_modified",
+                last_modified = excluded.last_modified,
+                tags = excluded.tags,
+                assignments = excluded.assignments,
+                creation_date = excluded.creation_date,
+                due_date = excluded.due_date,
+                repeats = excluded.repeats",
             (
                 Uuid::new_v4().to_string(),
                 &task.key,
@@ -205,6 +221,11 @@ impl Database {
                 &task.notes,
                 if task.completed { 1 } else { 0 },
                 now,
+                tags_json,
+                assignments_json,
+                creation_date_json,
+                due_date_json,
+                repeats_json,
             ),
         )?;
 
@@ -220,7 +241,7 @@ impl Database {
 
     pub fn get_tasks(&self, queue_key: &str) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.remote_key, t.title, t.notes, t.completed, q.remote_key, t.parent_key
+            "SELECT t.remote_key, t.title, t.notes, t.completed, q.remote_key, t.parent_key, t.tags, t.assignments, t.creation_date, t.due_date, t.repeats
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
              WHERE q.remote_key = ?1",
@@ -233,7 +254,12 @@ impl Database {
                 completed: row.get::<_, i32>(3)? != 0,
                 queue_key: row.get(4)?,
                 parent_key: row.get(5)?,
-                subitems: None, // We reconstruct this in App if needed or just use parent_key
+                subitems: None,
+                tags: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or(None),
+                assignments: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or(None),
+                creation_date: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or(None),
+                due_date: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(None),
+                repeats: serde_json::from_str(&row.get::<_, String>(10)?).unwrap_or(serde_json::Value::Bool(false)),
             })
         })?;
 
@@ -249,10 +275,15 @@ impl Database {
         // For local tasks, we set a placeholder key that UI recognizes as pending
         task.key = format!("local-{}", local_id);
         let now = Utc::now().to_rfc3339();
+        let tags_json = serde_json::to_string(&task.tags)?;
+        let assignments_json = serde_json::to_string(&task.assignments)?;
+        let creation_date_json = serde_json::to_string(&task.creation_date)?;
+        let due_date_json = serde_json::to_string(&task.due_date)?;
+        let repeats_json = serde_json::to_string(&task.repeats)?;
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
+             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             (
                 &local_id,
                 &task.key,
@@ -262,6 +293,11 @@ impl Database {
                 &task.notes,
                 if task.completed { 1 } else { 0 },
                 &now,
+                tags_json,
+                assignments_json,
+                creation_date_json,
+                due_date_json,
+                repeats_json,
             ),
         )?;
 

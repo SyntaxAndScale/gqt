@@ -163,6 +163,11 @@ async fn main() -> Result<()> {
                                 queue_key: Some(queue_key),
                                 parent_key: None,
                                 subitems: None,
+                                tags: None,
+                                assignments: None,
+                                creation_date: None,
+                                due_date: None,
+                                repeats: serde_json::Value::Bool(false),
                             };
                             let db = app.db.lock().unwrap();
                             match db.add_task_local(new_task) {
