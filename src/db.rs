@@ -55,6 +55,7 @@ impl Database {
                 local_id TEXT PRIMARY KEY,
                 remote_key TEXT UNIQUE,
                 queue_id TEXT NOT NULL,
+                parent_key TEXT,
                 title TEXT NOT NULL,
                 notes TEXT,
                 completed INTEGER NOT NULL,
@@ -187,29 +188,39 @@ impl Database {
     pub fn upsert_task(&self, task: &Task) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, title, notes, completed, last_modified)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified)
+             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(remote_key) DO UPDATE SET
                 title = excluded.title,
                 notes = excluded.notes,
                 completed = excluded.completed,
+                parent_key = excluded.parent_key,
                 last_modified = excluded.last_modified",
             (
                 Uuid::new_v4().to_string(),
                 &task.key,
                 &task.queue_key,
+                &task.parent_key,
                 &task.title,
                 &task.notes,
                 if task.completed { 1 } else { 0 },
                 now,
             ),
         )?;
+
+        if let Some(ref items) = task.subitems {
+            for mut sub in items.clone() {
+                sub.queue_key = task.queue_key.clone();
+                sub.parent_key = Some(task.key.clone());
+                self.upsert_task(&sub)?;
+            }
+        }
         Ok(())
     }
 
     pub fn get_tasks(&self, queue_key: &str) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.remote_key, t.title, t.notes, t.completed, q.remote_key
+            "SELECT t.remote_key, t.title, t.notes, t.completed, q.remote_key, t.parent_key
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
              WHERE q.remote_key = ?1",
@@ -221,6 +232,8 @@ impl Database {
                 notes: row.get(2)?,
                 completed: row.get::<_, i32>(3)? != 0,
                 queue_key: row.get(4)?,
+                parent_key: row.get(5)?,
+                subitems: None, // We reconstruct this in App if needed or just use parent_key
             })
         })?;
 
@@ -238,12 +251,13 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, title, notes, completed, last_modified)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7)",
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified)
+             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8)",
             (
                 &local_id,
                 &task.key,
                 &task.queue_key,
+                &task.parent_key,
                 &task.title,
                 &task.notes,
                 if task.completed { 1 } else { 0 },

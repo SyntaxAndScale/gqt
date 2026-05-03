@@ -69,20 +69,33 @@ pub fn render(frame: &mut Frame, app: &App) {
         } else {
             Style::default()
         });
-    let task_items: Vec<ListItem> = app.tasks.iter().enumerate()
-        .map(|(i, t)| {
+    
+    let visible_tasks = app.get_visible_tasks();
+    let task_items: Vec<ListItem> = visible_tasks.iter().enumerate()
+        .map(|(i, (t, depth))| {
             let prefix = if t.completed { "[x] " } else { "[ ] " };
+            let has_subtasks = app.tasks.iter().any(|st| st.parent_key.as_ref() == Some(&t.key));
+            
+            let expand_icon = if has_subtasks {
+                if app.expanded_tasks.contains(&t.key) { "▼" } else { "▶" }
+            } else {
+                " "
+            };
+
             let sync_indicator = if t.key.is_empty() || t.key.starts_with("local-") {
                 " ⏳"
             } else {
                 ""
             };
+            
+            let indentation = " ".repeat(*depth);
             let style = if i == app.selected_task_index {
                 Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            ListItem::new(format!("{}{}{}", prefix, t.title, sync_indicator)).style(style)
+            
+            ListItem::new(format!("{}{}{} {}{}", indentation, expand_icon, prefix, t.title, sync_indicator)).style(style)
         })
         .collect();
     let tasks_list = List::new(task_items).block(tasks_block);

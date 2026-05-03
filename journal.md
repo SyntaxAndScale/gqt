@@ -96,4 +96,16 @@
 - **UI:** Updated the status bar to show dynamic sync progress (e.g., `Syncing: 5/12 queues remaining...`).
 - **Versioning:** Incremented version to `0.1.11`.
 
+## 2026-05-02 (Hierarchical Sub-tasks)
+- **UI:** Implemented hierarchical and collapsible sub-tasks in the center pane.
+    - Parent tasks now show `▶` (collapsed) or `▼` (expanded) indicators.
+    - Sub-tasks are indented by one space per level for visual depth.
+    - Mapped the **Spacebar** to toggle task expansion in the center pane.
+    - Also enabled Spacebar for category toggling in the left pane as planned.
+- **DB & API:**
+    - Updated `Task` model to handle recursive `subitems` from the API.
+    - Added `parent_key` column to the `tasks` table for local persistence of hierarchy.
+    - Refactored `upsert_task` to recursively process sub-tasks and preserve relationships.
+- **Versioning:** Incremented version to `0.1.12`.
+
 

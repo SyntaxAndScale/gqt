@@ -161,6 +161,8 @@ async fn main() -> Result<()> {
                                 notes: Some("Created offline".into()),
                                 completed: false,
                                 queue_key: Some(queue_key),
+                                parent_key: None,
+                                subitems: None,
                             };
                             let db = app.db.lock().unwrap();
                             match db.add_task_local(new_task) {
@@ -173,6 +175,30 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    KeyCode::Char(' ') => {
+                        if app.active_pane == Pane::Tasks {
+                            let visible_tasks = app.get_visible_tasks();
+                            if let Some((task, _)) = visible_tasks.get(app.selected_task_index) {
+                                if app.expanded_tasks.contains(&task.key) {
+                                    app.expanded_tasks.remove(&task.key);
+                                } else {
+                                    app.expanded_tasks.insert(task.key.clone());
+                                }
+                            }
+                        } else if app.active_pane == Pane::Queues {
+                            // Also support space for category toggling per todo list
+                            let nav_entries = app.get_nav_entries();
+                            if let Some(entry) = nav_entries.get(app.selected_nav_index) {
+                                if let NavEntry::Category { name, .. } = entry {
+                                    if app.expanded_categories.contains(name) {
+                                        app.expanded_categories.remove(name);
+                                    } else {
+                                        app.expanded_categories.insert(name.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
                     KeyCode::Down => {
                         match app.active_pane {
                             Pane::Queues => {
@@ -182,7 +208,8 @@ async fn main() -> Result<()> {
                                 }
                             }
                             Pane::Tasks => {
-                                if app.selected_task_index < app.tasks.len().saturating_sub(1) {
+                                let visible_tasks = app.get_visible_tasks();
+                                if app.selected_task_index < visible_tasks.len().saturating_sub(1) {
                                     app.selected_task_index += 1;
                                 }
                             }

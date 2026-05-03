@@ -24,4 +24,6 @@ pub struct Task {
     #[serde(default)]
     pub completed: bool,
     pub queue_key: Option<String>,
+    pub parent_key: Option<String>,
+    pub subitems: Option<Vec<Task>>,
 }

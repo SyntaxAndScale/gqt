@@ -21,6 +21,7 @@ pub struct App {
     pub db: Arc<Mutex<Database>>,
     pub active_queue_key: Arc<Mutex<Option<String>>>,
     pub expanded_categories: HashSet<String>,
+    pub expanded_tasks: HashSet<String>,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
     pub selected_nav_index: usize,
@@ -37,6 +38,7 @@ impl App {
             db: Arc::new(Mutex::new(db)),
             active_queue_key: Arc::new(Mutex::new(None)),
             expanded_categories: HashSet::new(),
+            expanded_tasks: HashSet::new(),
             queues: Vec::new(),
             tasks: Vec::new(),
             selected_nav_index: 0,
@@ -115,8 +117,35 @@ impl App {
         }
     }
 
-    pub fn selected_task(&self) -> Option<&Task> {
-        self.tasks.get(self.selected_task_index)
+    pub fn get_visible_tasks(&self) -> Vec<(Task, usize)> {
+        let mut visible = Vec::new();
+        let top_level: Vec<&Task> = self.tasks.iter()
+            .filter(|t| t.parent_key.is_none())
+            .collect();
+        
+        for task in top_level {
+            self.flatten_task(task, 0, &mut visible);
+        }
+        visible
+    }
+
+    fn flatten_task(&self, task: &Task, depth: usize, visible: &mut Vec<(Task, usize)>) {
+        visible.push((task.clone(), depth));
+        
+        if self.expanded_tasks.contains(&task.key) {
+            let subtasks: Vec<&Task> = self.tasks.iter()
+                .filter(|t| t.parent_key.as_ref() == Some(&task.key))
+                .collect();
+            
+            for sub in subtasks {
+                self.flatten_task(sub, depth + 1, visible);
+            }
+        }
+    }
+
+    pub fn selected_task(&self) -> Option<Task> {
+        let visible = self.get_visible_tasks();
+        visible.get(self.selected_task_index).map(|(t, _)| t.clone())
     }
 
     pub fn next_pane(&mut self) {
