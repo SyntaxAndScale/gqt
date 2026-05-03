@@ -74,8 +74,12 @@ async fn main() -> Result<()> {
         // Check for sync events
         while let Ok(event) = sync_rx.try_recv() {
             match event {
-                SyncEvent::Complete => {
-                    app.status = "✅ Sync successful".into();
+                SyncEvent::Complete { unfetched, total } => {
+                    if unfetched > 0 {
+                        app.status = format!("⏳ Syncing: {}/{} queues remaining...", unfetched, total);
+                    } else {
+                        app.status = "✅ Sync successful".into();
+                    }
                     // Reload data from DB
                     let db = app.db.lock().unwrap();
                     if let Ok(queues) = db.get_queues() {

@@ -44,7 +44,8 @@ impl Database {
                 category TEXT,
                 category_name TEXT,
                 team_name TEXT,
-                scope TEXT
+                scope TEXT,
+                tasks_fetched INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )?;
@@ -80,8 +81,8 @@ impl Database {
     pub fn upsert_queue(&self, queue: &Queue) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
-            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified, last_synced_at, category, category_name, team_name, scope)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO queues (local_id, remote_key, name, is_inbox, last_modified, last_synced_at, category, category_name, team_name, scope, tasks_fetched)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(remote_key) DO UPDATE SET
                 name = excluded.name,
                 is_inbox = excluded.is_inbox,
@@ -101,6 +102,7 @@ impl Database {
                 queue.category_name.as_deref(),
                 queue.team_name.as_deref(),
                 queue.scope.as_deref(),
+                0, // tasks_fetched defaults to 0 on new insert
             ),
         )?;
         Ok(())
@@ -126,6 +128,60 @@ impl Database {
             queues.push(queue?);
         }
         Ok(queues)
+    }
+
+    pub fn mark_tasks_fetched(&self, queue_key: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE queues SET tasks_fetched = 1 WHERE remote_key = ?1",
+            [queue_key],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_unfetched_queues_count(&self) -> Result<usize> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM queues WHERE tasks_fetched = 0",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    pub fn get_total_queues_count(&self) -> Result<usize> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM queues",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    pub fn get_next_unfetched_queue(&self) -> Result<Option<Queue>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope 
+             FROM queues 
+             WHERE tasks_fetched = 0 
+             ORDER BY is_inbox DESC, last_synced_at ASC 
+             LIMIT 1"
+        )?;
+        let mut rows = stmt.query_map([], |row| {
+            Ok(Queue {
+                key: row.get(0)?,
+                name: row.get(1)?,
+                is_inbox: row.get::<_, i32>(2)? != 0,
+                last_modified: row.get(3)?,
+                category: row.get(4)?,
+                category_name: row.get(5)?,
+                team_name: row.get(6)?,
+                scope: row.get(7)?,
+            })
+        })?;
+
+        if let Some(queue) = rows.next() {
+            Ok(Some(queue?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn upsert_task(&self, task: &Task) -> Result<()> {

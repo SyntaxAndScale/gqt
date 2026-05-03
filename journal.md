@@ -88,4 +88,12 @@
     - Decoupled API client from display logic, following the mandate that the consuming application handles data processing/filtering.
 - **Versioning:** Incremented version to `0.1.10`.
 
+## 2026-05-02 (Initial Sync UX & Progress Tracking)
+- **Persistence Phase 5:** Implemented "Lazy Sync" for better initial user experience.
+    - Added `tasks_fetched` flag to the database to track per-queue synchronization status.
+    - Prioritized **Inbox** and **active queue** for immediate task retrieval.
+    - Implemented sequential background fetching for remaining queues (one every 5 seconds) to avoid `429` errors during initial load.
+- **UI:** Updated the status bar to show dynamic sync progress (e.g., `Syncing: 5/12 queues remaining...`).
+- **Versioning:** Incremented version to `0.1.11`.
+
 

@@ -5,10 +5,12 @@ use anyhow::{Result, anyhow};
 use crate::db::Database;
 use crate::gqueues::GqueuesClient;
 use crate::gqueues::client::GqueuesError;
+use crate::gqueues::Queue;
 use crate::models::Operation;
+use rusqlite::OptionalExtension;
 
 pub enum SyncEvent {
-    Complete,
+    Complete { unfetched: usize, total: usize },
     Error(String),
 }
 
@@ -34,11 +36,17 @@ impl SyncEngine {
 
         loop {
             let interval = match self.sync_cycle().await {
-                Ok(_) => {
+                Ok(stats) => {
                     retry_count = 0;
-                    log::info!("Sync cycle completed successfully");
-                    let _ = self.tx.send(SyncEvent::Complete).await;
-                    Duration::from_secs(60)
+                    log::info!("Sync cycle completed successfully: {}/{} remaining", stats.0, stats.1);
+                    let _ = self.tx.send(SyncEvent::Complete { unfetched: stats.0, total: stats.1 }).await;
+                    
+                    // If we still have unfetched queues, run again sooner
+                    if stats.0 > 0 {
+                        Duration::from_secs(5)
+                    } else {
+                        Duration::from_secs(60)
+                    }
                 }
                 Err(e) => {
                     if let Some(gq_err) = e.downcast_ref::<GqueuesError>() {
@@ -70,10 +78,17 @@ impl SyncEngine {
         }
     }
 
-    async fn sync_cycle(&self) -> Result<()> {
+    async fn sync_cycle(&self) -> Result<(usize, usize)> {
         self.push_pending_changes().await?;
         self.pull_remote_changes().await?;
-        Ok(())
+        
+        let (unfetched, total) = {
+            let db = self.db.lock().unwrap();
+            let unfetched = db.get_unfetched_queues_count()?;
+            let total = db.get_total_queues_count()?;
+            (unfetched, total)
+        };
+        Ok((unfetched, total))
     }
 
     async fn push_pending_changes(&self) -> Result<()> {
@@ -112,46 +127,95 @@ impl SyncEngine {
         let api_queues = self.client.get_queues().await
             .map_err(|e| anyhow!(e))?;
         
+        {
+            let db = self.db.lock().unwrap();
+            for q in api_queues {
+                db.upsert_queue(&q)?;
+            }
+        }
+
         let active_key = {
             let active = self.active_queue_key.lock().unwrap();
             active.clone()
         };
 
-        // 2. Identify priority queue
-        let mut queues_to_sync = Vec::new();
-        for q in api_queues {
-            let is_priority = active_key.as_ref() == Some(&q.key);
-            queues_to_sync.push((q, is_priority));
-        }
+        // 2. Decide what to pull
+        let next_queue = {
+            let db = self.db.lock().unwrap();
+            
+            // Check if active queue needs fetching
+            let mut active_needs_fetch = false;
+            if let Some(ref ak) = active_key {
+                let mut stmt = db.conn.prepare("SELECT tasks_fetched FROM queues WHERE remote_key = ?1")?;
+                let fetched: Option<i32> = stmt.query_row([ak], |row| row.get(0)).optional()?;
+                active_needs_fetch = fetched == Some(0);
+            }
 
-        // Sort: priority first
-        queues_to_sync.sort_by(|a, b| b.1.cmp(&a.1));
+            if active_needs_fetch {
+                let ak = active_key.as_ref().unwrap();
+                let mut stmt = db.conn.prepare("SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope FROM queues WHERE remote_key = ?1")?;
+                let q = stmt.query_row([ak], |row| Ok(Queue {
+                    key: row.get(0)?,
+                    name: row.get(1)?,
+                    is_inbox: row.get::<_, i32>(2)? != 0,
+                    last_modified: row.get(3)?,
+                    category: row.get(4)?,
+                    category_name: row.get(5)?,
+                    team_name: row.get(6)?,
+                    scope: row.get(7)?,
+                }))?;
+                Some(q)
+            } else {
+                db.get_next_unfetched_queue()?
+            }
+        };
 
-        for (api_queue, is_priority) in queues_to_sync {
-            let should_pull = {
+        if let Some(queue) = next_queue {
+            log::info!("Lazy Sync: Pulling tasks for queue: {}", queue.name);
+            let tasks = self.client.get_tasks(&queue.key).await
+                .map_err(|e| anyhow!(e))?;
+            
+            {
                 let db = self.db.lock().unwrap();
-                let local_modified = db.get_queue_last_modified(&api_queue.key)?;
-                
-                // Pull if it's the priority queue OR if metadata says it changed
-                is_priority || local_modified.as_deref() != api_queue.last_modified.as_deref()
+                for mut t in tasks {
+                    t.queue_key = Some(queue.key.clone());
+                    db.upsert_task(&t)?;
+                }
+                db.mark_tasks_fetched(&queue.key)?;
+                db.update_queue_sync_time(&queue.key)?;
+            }
+        } else {
+            // All queues are fetched, do normal metadata check for the most out-of-date queue
+            let stale_queue = {
+                let db = self.db.lock().unwrap();
+                let mut stmt = db.conn.prepare(
+                    "SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope 
+                     FROM queues 
+                     ORDER BY last_synced_at ASC LIMIT 1"
+                )?;
+                stmt.query_row([], |row| Ok(Queue {
+                    key: row.get(0)?,
+                    name: row.get(1)?,
+                    is_inbox: row.get::<_, i32>(2)? != 0,
+                    last_modified: row.get(3)?,
+                    category: row.get(4)?,
+                    category_name: row.get(5)?,
+                    team_name: row.get(6)?,
+                    scope: row.get(7)?,
+                })).optional()?
             };
 
-            if should_pull {
-                log::info!("Pulling tasks for queue: {} (priority: {})", api_queue.name, is_priority);
-                let tasks = self.client.get_tasks(&api_queue.key).await
+            if let Some(q) = stale_queue {
+                log::debug!("Checking for updates on stale queue: {}", q.name);
+                let tasks = self.client.get_tasks(&q.key).await
                     .map_err(|e| anyhow!(e))?;
                 
                 let db = self.db.lock().unwrap();
-                // Update queue metadata first (to update local_id mapping and last_modified)
-                db.upsert_queue(&api_queue)?;
-                
                 for mut t in tasks {
-                    t.queue_key = Some(api_queue.key.clone());
+                    t.queue_key = Some(q.key.clone());
                     db.upsert_task(&t)?;
                 }
-                db.update_queue_sync_time(&api_queue.key)?;
-            } else {
-                log::debug!("Skipping pull for queue: {} (no changes detected)", api_queue.name);
+                db.update_queue_sync_time(&q.key)?;
             }
         }
 
