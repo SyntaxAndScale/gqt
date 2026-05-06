@@ -119,4 +119,11 @@
     - Implemented JSON serialization for complex fields in SQLite.
 - **Versioning:** Incremented version to `0.1.13`.
 
+## 2026-05-02 (HTML Stripping)
+- **UI:** Implemented basic HTML cleaning for task titles and notes.
+    - Added `html-escape` and `regex` dependencies.
+    - Added a `clean_html` utility to `src/ui.rs` that removes HTML tags and decodes entities (e.g., `&nbsp;`).
+    - Applied cleaning to the main task list and the Details pane to improve readability.
+- **Versioning:** Incremented version to `0.1.14`.
+
 

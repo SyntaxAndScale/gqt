@@ -6,6 +6,18 @@ use ratatui::{
 };
 
 use crate::app::{App, Pane, NavEntry};
+use regex::Regex;
+use std::sync::OnceLock;
+
+static HTML_TAG_RE: OnceLock<Regex> = OnceLock::new();
+
+/// Utility to strip HTML tags and decode entities.
+/// This is a temporary measure until full HTML-to-Ratatui mapping is implemented.
+fn clean_html(input: &str) -> String {
+    let re = HTML_TAG_RE.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
+    let stripped = re.replace_all(input, "");
+    html_escape::decode_html_entities(&stripped).to_string()
+}
 
 pub fn render(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -95,7 +107,8 @@ pub fn render(frame: &mut Frame, app: &App) {
                 Style::default()
             };
             
-            ListItem::new(format!("{}{}{} {}{}", indentation, expand_icon, prefix, t.title, sync_indicator)).style(style)
+            let title = clean_html(&t.title);
+            ListItem::new(format!("{}{}{} {}{}", indentation, expand_icon, prefix, title, sync_indicator)).style(style)
         })
         .collect();
     let tasks_list = List::new(task_items).block(tasks_block);
@@ -131,7 +144,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 
         // 2. Title
         details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-            task.title.clone(),
+            clean_html(&task.title),
             Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
         )));
         details_text.push(ratatui::text::Line::from(""));
@@ -175,7 +188,8 @@ pub fn render(frame: &mut Frame, app: &App) {
 
         // 5. Notes
         details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled("Notes:", Style::default().add_modifier(Modifier::UNDERLINED))));
-        details_text.push(ratatui::text::Line::from(task.notes.clone().unwrap_or_else(|| "None".to_string())));
+        let notes_text = task.notes.clone().unwrap_or_else(|| "None".to_string());
+        details_text.push(ratatui::text::Line::from(clean_html(&notes_text)));
     } else {
         details_text.push(ratatui::text::Line::from("No task selected"));
     }

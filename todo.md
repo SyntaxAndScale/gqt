@@ -44,6 +44,9 @@
 - [ ] I noticed that when I deleted a task in the Gqueues web UI that it didn't delete in the gqt TUI. I dont know if an API call will list the deleted tasks, but we will need someway to apply deletions from the official gqueues remote database to the local database.
 - [ ] Implement keyboard configuration customization. The default keyboard controls should match the web version of gqueues as closely as possible except where they would be impractical or impossible within a TUI envrionment. They should be configurable via a `config.toml` stored in the appropriate XDG path and all the defaults should be pre-loaded in the configuration file on first run. 
 - [x] Update the right pane (task detail) to show each of the task's Tags, Title, Assignee, Task Creation Date, Due Date (from the API's 'rawDate'), Repeat information (if repeating is not false), then Notes.
+- [ ] Phase 6: Advanced HTML Rendering (Future)
+    - [ ] Map HTML tags (`<b>`, `<u>`, etc.) directly to Ratatui `Span` styles instead of stripping them.
 - [x] If a task displayed in the center panel has sub-tasks, it should include a expand/collapse arrow that prepends the "[ ]" of the task. Pressing the spacebar on the task should expand/collapse to show the sub-tasks.
 - [x] When navigating the category list, make it so that the space bar can be pressed to expand/collapse a category
 - [ ] Implement the same shortcut keys for hiding/showing the left and right panels as VSCode uses for the left and right side panels.
+- [ ] Implment a shortcut key press to 'Sync now' which shoudl basically force a sync between the local database and the gqueues web service.
