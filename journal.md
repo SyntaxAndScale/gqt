@@ -73,7 +73,19 @@
     - `❌` for errors or failures.
     - `⏳` for operations in progress.
 - **State Management:** Refactored `App` to manage a unified `status` string, simplifying visual feedback.
-- **Versioning:** Incremented version to `0.1.8`.
+- **Versioning:** Incremented version to `0.1.18`.
+
+## 2026-05-02 (Customizable Keyboard Configuration)
+- **Configuration:** Implemented an exhaustive, customizable keybinding system.
+    - Defined a comprehensive `Action` enum representing 50+ GQueues actions.
+    - Updated `config.toml` to include a `[keybindings.bindings]` section.
+    - Implemented automatic provisioning: the config file is pre-loaded with GQueues web-compatible defaults on the first launch.
+- **TUI:**
+    - Implemented a stateful `KeyHandler` that supports multi-key chorded commands (e.g., `g` then `i`).
+    - Refactored `main.rs` to process logical actions instead of raw key events.
+    - Mapped `j`/`k` for navigation and `Ctrl-c` for quitting by default.
+- **Versioning:** Incremented version to `0.1.19`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

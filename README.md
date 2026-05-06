@@ -12,12 +12,32 @@ A terminal-based user interface (TUI) for managing Gqueues tasks, built with Rus
 ## Navigation
 
 - `Tab` / `Shift-Tab`: Switch focus between panes (Queues, Tasks, Details).
-- `Up` / `Down`: Navigate through lists.
-- `Enter` (Queues pane): Load tasks for the selected queue.
-- `q`: Quit the application.
+- `j`, `k` / `Up`, `Down`: Navigate through lists.
+- `Enter`: Select Queue / Toggle Category expansion.
+- `Space`: Toggle Category / Toggle Subtasks.
+- `q`: Quick Add task.
+- `r`, `s`: Manual Sync.
+- `g` then `i`: Go to Inbox.
+- `Ctrl-c`: Quit the application.
+
+## Configuration
+
+Gqueues TUI follows XDG best practices. Your configuration is stored at `~/.config/gqt/config.toml`.
+
+### Keybindings
+You can customize any keyboard shortcut by editing the `[keybindings.bindings]` section in your `config.toml`. The application automatically populates this file with GQueues web-compatible defaults on the first run.
+
+Example `config.toml`:
+```toml
+[keybindings.bindings]
+quit = "ctrl-q"
+sync = "s"
+move_up = "k"
+move_down = "j"
+```
 
 ## Setup
-
+...
 1. Ensure you have Rust and Cargo installed.
 2. Configure your Gqueues credentials in `.gemini/settings.local.json`:
    ```json
