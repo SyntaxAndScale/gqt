@@ -49,4 +49,4 @@
 - [x] If a task displayed in the center panel has sub-tasks, it should include a expand/collapse arrow that prepends the "[ ]" of the task. Pressing the spacebar on the task should expand/collapse to show the sub-tasks.
 - [x] When navigating the category list, make it so that the space bar can be pressed to expand/collapse a category
 - [ ] Implement the same shortcut keys for hiding/showing the left and right panels as VSCode uses for the left and right side panels.
-- [ ] Implment a shortcut key press to 'Sync now' which shoudl basically force a sync between the local database and the gqueues web service.
+- [x] Implment a shortcut key press to 'Sync now' which shoudl basically force a sync between the local database and the gqueues web service.

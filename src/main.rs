@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 use crate::app::{App, Pane, NavEntry};
 use crate::gqueues::GqueuesClient;
-use crate::sync::{SyncEngine, SyncEvent};
+use crate::sync::{SyncEngine, SyncEvent, SyncCommand};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,7 +49,8 @@ async fn main() -> Result<()> {
     
     // Setup Sync Engine
     let (sync_tx, mut sync_rx) = mpsc::channel(32);
-    let mut sync_engine = SyncEngine::new(client, app.db.clone(), app.active_queue_key.clone(), sync_tx);
+    let (cmd_tx, cmd_rx) = mpsc::channel(32);
+    let mut sync_engine = SyncEngine::new(client, app.db.clone(), app.active_queue_key.clone(), sync_tx, cmd_rx);
     tokio::spawn(async move {
         sync_engine.run().await;
     });
@@ -113,6 +114,10 @@ async fn main() -> Result<()> {
                     KeyCode::Char('q') => app.running = false,
                     KeyCode::Tab => app.next_pane(),
                     KeyCode::BackTab => app.previous_pane(),
+                    KeyCode::Char('s') => {
+                        app.status = "⏳ Force sync triggered...".into();
+                        let _ = cmd_tx.send(SyncCommand::ForceSync).await;
+                    }
                     KeyCode::Enter => {
                         if app.active_pane == Pane::Queues {
                             let nav_entries = app.get_nav_entries();

@@ -126,4 +126,11 @@
     - Applied cleaning to the main task list and the Details pane to improve readability.
 - **Versioning:** Incremented version to `0.1.14`.
 
+## 2026-05-02 (Manual Sync Trigger)
+- **Persistence & Sync:** Implemented a manual "Sync Now" trigger.
+    - Added a `SyncCommand` channel to communicate between the TUI and background engine.
+    - Refactored `SyncEngine` main loop using `tokio::select!` to listen for immediate commands while maintaining the periodic timer.
+    - Mapped the **`s`** key in the TUI to trigger an immediate sync cycle.
+- **Versioning:** Incremented version to `0.1.15`.
+
 

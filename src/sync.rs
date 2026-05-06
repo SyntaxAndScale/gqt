@@ -14,11 +14,16 @@ pub enum SyncEvent {
     Error(String),
 }
 
+pub enum SyncCommand {
+    ForceSync,
+}
+
 pub struct SyncEngine {
     client: Arc<GqueuesClient>,
     db: Arc<Mutex<Database>>,
     active_queue_key: Arc<Mutex<Option<String>>>,
     tx: mpsc::Sender<SyncEvent>,
+    cmd_rx: mpsc::Receiver<SyncCommand>,
 }
 
 impl SyncEngine {
@@ -27,54 +32,71 @@ impl SyncEngine {
         db: Arc<Mutex<Database>>,
         active_queue_key: Arc<Mutex<Option<String>>>,
         tx: mpsc::Sender<SyncEvent>,
+        cmd_rx: mpsc::Receiver<SyncCommand>,
     ) -> Self {
-        Self { client, db, active_queue_key, tx }
+        Self { client, db, active_queue_key, tx, cmd_rx }
     }
 
     pub async fn run(&mut self) {
         let mut retry_count = 0;
+        let mut interval = Duration::from_secs(60);
 
         loop {
-            let interval = match self.sync_cycle().await {
-                Ok(stats) => {
-                    retry_count = 0;
-                    log::info!("Sync cycle completed successfully: {}/{} remaining", stats.0, stats.1);
-                    let _ = self.tx.send(SyncEvent::Complete { unfetched: stats.0, total: stats.1 }).await;
-                    
-                    // If we still have unfetched queues, run again sooner
-                    if stats.0 > 0 {
-                        Duration::from_secs(5)
-                    } else {
-                        Duration::from_secs(60)
-                    }
+            tokio::select! {
+                _ = sleep(interval) => {
+                    // Periodic sync
+                    interval = self.handle_sync_cycle(&mut retry_count).await;
                 }
-                Err(e) => {
-                    if let Some(gq_err) = e.downcast_ref::<GqueuesError>() {
-                        match gq_err {
-                            GqueuesError::RateLimited(dur) => {
-                                log::warn!("Rate limited. Waiting for {:?}", dur);
-                                let _ = self.tx.send(SyncEvent::Error(format!("Rate limited. Waiting {:?}...", dur))).await;
-                                *dur
-                            }
-                            _ => {
-                                retry_count += 1;
-                                log::error!("Sync cycle failed: {}", e);
-                                let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
-                                let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
-                                backoff
-                            }
+                Some(cmd) = self.cmd_rx.recv() => {
+                    match cmd {
+                        SyncCommand::ForceSync => {
+                            log::info!("Manual sync triggered via command");
+                            interval = self.handle_sync_cycle(&mut retry_count).await;
                         }
-                    } else {
-                        retry_count += 1;
-                        log::error!("Sync cycle failed with non-Gqueues error: {}", e);
-                        let backoff = Duration::from_secs(2u64.pow(retry_count).min(60).max(5));
-                        let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
-                        backoff
                     }
                 }
-            };
+            }
+        }
+    }
 
-            sleep(interval).await;
+    async fn handle_sync_cycle(&self, retry_count: &mut u32) -> Duration {
+        match self.sync_cycle().await {
+            Ok(stats) => {
+                *retry_count = 0;
+                log::info!("Sync cycle completed successfully: {}/{} remaining", stats.0, stats.1);
+                let _ = self.tx.send(SyncEvent::Complete { unfetched: stats.0, total: stats.1 }).await;
+                
+                // If we still have unfetched queues, run again sooner
+                if stats.0 > 0 {
+                    Duration::from_secs(5)
+                } else {
+                    Duration::from_secs(60)
+                }
+            }
+            Err(e) => {
+                if let Some(gq_err) = e.downcast_ref::<GqueuesError>() {
+                    match gq_err {
+                        GqueuesError::RateLimited(dur) => {
+                            log::warn!("Rate limited. Waiting for {:?}", dur);
+                            let _ = self.tx.send(SyncEvent::Error(format!("Rate limited. Waiting {:?}...", dur))).await;
+                            *dur
+                        }
+                        _ => {
+                            *retry_count += 1;
+                            log::error!("Sync cycle failed: {}", e);
+                            let backoff = Duration::from_secs(2u64.pow(*retry_count).min(60).max(5));
+                            let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                            backoff
+                        }
+                    }
+                } else {
+                    *retry_count += 1;
+                    log::error!("Sync cycle failed with non-Gqueues error: {}", e);
+                    let backoff = Duration::from_secs(2u64.pow(*retry_count).min(60).max(5));
+                    let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                    backoff
+                }
+            }
         }
     }
 
