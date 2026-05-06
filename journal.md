@@ -133,4 +133,13 @@
     - Mapped the **`s`** key in the TUI to trigger an immediate sync cycle.
 - **Versioning:** Incremented version to `0.1.15`.
 
+## 2026-05-02 (Sync Integrity & Data Refresh)
+- **Persistence & Sync:** Fixed a critical bug where remote modifications were being ignored by the Sync Engine.
+    - Decoupled Queue Metadata from the "Sync Point": `upsert_queue` no longer overwrites the `last_modified` timestamp on conflict.
+    - New `update_queue_sync_point` method ensures the local sync timestamp only advances AFTER a successful task pull.
+    - Refactored `pull_remote_changes` to process ALL modified queues in a single cycle while prioritizing the active view.
+    - Implemented a "Force Refresh" for the active queue when a manual sync (`s`) is triggered.
+    - Fixed `upsert_task` to correctly update the `queue_id` during conflict resolution, ensuring task moves are reflected locally.
+- **Versioning:** Incremented version to `0.1.16`.
+
 

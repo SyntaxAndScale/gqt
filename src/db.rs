@@ -92,7 +92,6 @@ impl Database {
              ON CONFLICT(remote_key) DO UPDATE SET
                 name = excluded.name,
                 is_inbox = excluded.is_inbox,
-                last_modified = excluded.last_modified,
                 category = excluded.category,
                 category_name = excluded.category_name,
                 team_name = excluded.team_name,
@@ -102,7 +101,7 @@ impl Database {
                 &queue.key,
                 &queue.name,
                 if queue.is_inbox { 1 } else { 0 },
-                queue.last_modified.as_deref().unwrap_or(&now),
+                "", // last_modified is initialized empty on new insert
                 &now,
                 queue.category.as_deref(),
                 queue.category_name.as_deref(),
@@ -110,6 +109,15 @@ impl Database {
                 queue.scope.as_deref(),
                 0, // tasks_fetched defaults to 0 on new insert
             ),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_queue_sync_point(&self, queue_key: &str, server_timestamp: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE queues SET last_modified = ?1, last_synced_at = ?2, tasks_fetched = 1 WHERE remote_key = ?3",
+            [server_timestamp, &now, queue_key],
         )?;
         Ok(())
     }
@@ -134,6 +142,14 @@ impl Database {
             queues.push(queue?);
         }
         Ok(queues)
+    }
+
+    pub fn mark_queue_unfetched(&self, queue_key: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE queues SET last_modified = '', tasks_fetched = 0 WHERE remote_key = ?1",
+            [queue_key],
+        )?;
+        Ok(())
     }
 
     pub fn mark_tasks_fetched(&self, queue_key: &str) -> Result<()> {
@@ -206,6 +222,7 @@ impl Database {
                 notes = excluded.notes,
                 completed = excluded.completed,
                 parent_key = excluded.parent_key,
+                queue_id = excluded.queue_id,
                 last_modified = excluded.last_modified,
                 tags = excluded.tags,
                 assignments = excluded.assignments,
