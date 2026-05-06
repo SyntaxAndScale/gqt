@@ -2,6 +2,7 @@ use crate::gqueues::{GqueuesClient, Queue, Task};
 use crate::db::Database;
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
+use ratatui::widgets::ListState;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -24,8 +25,9 @@ pub struct App {
     pub expanded_tasks: HashSet<String>,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
-    pub selected_nav_index: usize,
-    pub selected_task_index: usize,
+    pub nav_state: ListState,
+    pub task_state: ListState,
+    pub detail_scroll: u16,
     pub active_pane: Pane,
     pub running: bool,
     pub status: String,
@@ -33,6 +35,11 @@ pub struct App {
 
 impl App {
     pub fn new(client: GqueuesClient, db: Database) -> Self {
+        let mut nav_state = ListState::default();
+        nav_state.select(Some(0));
+        let mut task_state = ListState::default();
+        task_state.select(Some(0));
+
         Self {
             client: Arc::new(client),
             db: Arc::new(Mutex::new(db)),
@@ -41,8 +48,9 @@ impl App {
             expanded_tasks: HashSet::new(),
             queues: Vec::new(),
             tasks: Vec::new(),
-            selected_nav_index: 0,
-            selected_task_index: 0,
+            nav_state,
+            task_state,
+            detail_scroll: 0,
             active_pane: Pane::Queues,
             running: true,
             status: "Ready".into(),
@@ -111,7 +119,7 @@ impl App {
 
     pub fn selected_queue(&self) -> Option<Queue> {
         let entries = self.get_nav_entries();
-        match entries.get(self.selected_nav_index) {
+        match entries.get(self.nav_state.selected().unwrap_or(0)) {
             Some(NavEntry::Queue(q)) => Some(q.clone()),
             _ => None,
         }
@@ -145,7 +153,7 @@ impl App {
 
     pub fn selected_task(&self) -> Option<Task> {
         let visible = self.get_visible_tasks();
-        visible.get(self.selected_task_index).map(|(t, _)| t.clone())
+        visible.get(self.task_state.selected().unwrap_or(0)).map(|(t, _)| t.clone())
     }
 
     pub fn next_pane(&mut self) {

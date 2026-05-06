@@ -142,4 +142,12 @@
     - Fixed `upsert_task` to correctly update the `queue_id` during conflict resolution, ensuring task moves are reflected locally.
 - **Versioning:** Incremented version to `0.1.16`.
 
+## 2026-05-02 (Scrolling Support)
+- **TUI:** Implemented vertical scrolling for all three panes.
+    - **Queues & Tasks:** Refactored to use Ratatui's `ListState`, enabling automatic scrolling that follows the selection.
+    - **Details:** Implemented a manual scroll offset for the task detail paragraph to handle overflow notes and narrow windows.
+- **State Management:** Updated `App` to manage `nav_state`, `task_state`, and `detail_scroll`.
+- **UX:** `Up`/`Down` keys now handle list navigation and paragraph scrolling depending on the focused pane. Scrolling resets automatically when a new task is selected.
+- **Versioning:** Incremented version to `0.1.17`.
+
 

@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 
     // Main loop
     while app.running {
-        terminal.draw(|f| ui::render(f, &app))?;
+        terminal.draw(|f| ui::render(f, &mut app))?;
 
         // Check for sync events
         while let Ok(event) = sync_rx.try_recv() {
@@ -86,7 +86,8 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(app.selected_nav_index) {
+                    let selected = app.nav_state.selected().unwrap_or(0);
+                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(selected) {
                         if let Ok(tasks) = db.get_tasks(&queue.key) {
                             app.tasks = tasks;
                         }
@@ -99,7 +100,8 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(app.selected_nav_index) {
+                    let selected = app.nav_state.selected().unwrap_or(0);
+                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(selected) {
                         if let Ok(tasks) = db.get_tasks(&queue.key) {
                             app.tasks = tasks;
                         }
@@ -121,7 +123,8 @@ async fn main() -> Result<()> {
                     KeyCode::Enter => {
                         if app.active_pane == Pane::Queues {
                             let nav_entries = app.get_nav_entries();
-                            if let Some(entry) = nav_entries.get(app.selected_nav_index) {
+                            let selected = app.nav_state.selected().unwrap_or(0);
+                            if let Some(entry) = nav_entries.get(selected) {
                                 match entry {
                                     NavEntry::Category { name, .. } => {
                                         if app.expanded_categories.contains(name) {
@@ -144,7 +147,8 @@ async fn main() -> Result<()> {
                                             match db.get_tasks(&queue_key) {
                                                 Ok(tasks) => {
                                                     app.tasks = tasks;
-                                                    app.selected_task_index = 0;
+                                                    app.task_state.select(Some(0));
+                                                    app.detail_scroll = 0;
                                                     app.status = format!("✅ Loaded {}", queue.name);
                                                 }
                                                 Err(e) => app.status = format!("❌ Local DB error: {}", e),
@@ -178,7 +182,9 @@ async fn main() -> Result<()> {
                             match db.add_task_local(new_task) {
                                 Ok(task) => {
                                     app.tasks.push(task);
-                                    app.selected_task_index = app.tasks.len() - 1;
+                                    let visible_tasks = app.get_visible_tasks();
+                                    app.task_state.select(Some(visible_tasks.len().saturating_sub(1)));
+                                    app.detail_scroll = 0;
                                     app.status = "✅ Local task created".into();
                                 }
                                 Err(e) => app.status = format!("❌ Failed to create local task: {}", e),
@@ -188,7 +194,8 @@ async fn main() -> Result<()> {
                     KeyCode::Char(' ') => {
                         if app.active_pane == Pane::Tasks {
                             let visible_tasks = app.get_visible_tasks();
-                            if let Some((task, _)) = visible_tasks.get(app.selected_task_index) {
+                            let selected = app.task_state.selected().unwrap_or(0);
+                            if let Some((task, _)) = visible_tasks.get(selected) {
                                 if app.expanded_tasks.contains(&task.key) {
                                     app.expanded_tasks.remove(&task.key);
                                 } else {
@@ -198,7 +205,8 @@ async fn main() -> Result<()> {
                         } else if app.active_pane == Pane::Queues {
                             // Also support space for category toggling per todo list
                             let nav_entries = app.get_nav_entries();
-                            if let Some(entry) = nav_entries.get(app.selected_nav_index) {
+                            let selected = app.nav_state.selected().unwrap_or(0);
+                            if let Some(entry) = nav_entries.get(selected) {
                                 if let NavEntry::Category { name, .. } = entry {
                                     if app.expanded_categories.contains(name) {
                                         app.expanded_categories.remove(name);
@@ -213,32 +221,42 @@ async fn main() -> Result<()> {
                         match app.active_pane {
                             Pane::Queues => {
                                 let nav_entries = app.get_nav_entries();
-                                if app.selected_nav_index < nav_entries.len().saturating_sub(1) {
-                                    app.selected_nav_index += 1;
+                                let current = app.nav_state.selected().unwrap_or(0);
+                                if current < nav_entries.len().saturating_sub(1) {
+                                    app.nav_state.select(Some(current + 1));
                                 }
                             }
                             Pane::Tasks => {
                                 let visible_tasks = app.get_visible_tasks();
-                                if app.selected_task_index < visible_tasks.len().saturating_sub(1) {
-                                    app.selected_task_index += 1;
+                                let current = app.task_state.selected().unwrap_or(0);
+                                if current < visible_tasks.len().saturating_sub(1) {
+                                    app.task_state.select(Some(current + 1));
+                                    app.detail_scroll = 0; // Reset scroll on task change
                                 }
                             }
-                            _ => {}
+                            Pane::Details => {
+                                app.detail_scroll = app.detail_scroll.saturating_add(1);
+                            }
                         }
                     }
                     KeyCode::Up => {
                         match app.active_pane {
                             Pane::Queues => {
-                                if app.selected_nav_index > 0 {
-                                    app.selected_nav_index -= 1;
+                                let current = app.nav_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.nav_state.select(Some(current - 1));
                                 }
                             }
                             Pane::Tasks => {
-                                if app.selected_task_index > 0 {
-                                    app.selected_task_index -= 1;
+                                let current = app.task_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.task_state.select(Some(current - 1));
+                                    app.detail_scroll = 0; // Reset scroll on task change
                                 }
                             }
-                            _ => {}
+                            Pane::Details => {
+                                app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                            }
                         }
                     }
                     _ => {}

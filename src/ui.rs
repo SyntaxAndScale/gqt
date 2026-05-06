@@ -19,7 +19,7 @@ fn clean_html(input: &str) -> String {
     html_escape::decode_html_entities(&stripped).to_string()
 }
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -48,29 +48,26 @@ pub fn render(frame: &mut Frame, app: &App) {
         });
     
     let nav_entries = app.get_nav_entries();
-    let queue_items: Vec<ListItem> = nav_entries.iter().enumerate()
-        .map(|(i, entry)| {
-            let style = if i == app.selected_nav_index {
-                Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-
+    let queue_items: Vec<ListItem> = nav_entries.iter()
+        .map(|entry| {
             match entry {
                 NavEntry::Category { name, expanded } => {
                     let icon = if *expanded { "▼" } else { "▶" };
                     ListItem::new(format!("{} {}", icon, name.to_uppercase()))
-                        .style(style.add_modifier(Modifier::BOLD))
+                        .style(Style::default().add_modifier(Modifier::BOLD))
                 }
                 NavEntry::Queue(q) => {
                     ListItem::new(format!("  {}", q.name))
-                        .style(style)
                 }
             }
         })
         .collect();
-    let queues_list = List::new(queue_items).block(queues_block);
-    frame.render_widget(queues_list, main_chunks[0]);
+    
+    let queues_list = List::new(queue_items)
+        .block(queues_block)
+        .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD));
+    
+    frame.render_stateful_widget(queues_list, main_chunks[0], &mut app.nav_state);
 
     // Tasks Pane
     let tasks_block = Block::default()
@@ -83,8 +80,8 @@ pub fn render(frame: &mut Frame, app: &App) {
         });
     
     let visible_tasks = app.get_visible_tasks();
-    let task_items: Vec<ListItem> = visible_tasks.iter().enumerate()
-        .map(|(i, (t, depth))| {
+    let task_items: Vec<ListItem> = visible_tasks.iter()
+        .map(|(t, depth)| {
             let prefix = if t.completed { "[x] " } else { "[ ] " };
             let has_subtasks = app.tasks.iter().any(|st| st.parent_key.as_ref() == Some(&t.key));
             
@@ -101,18 +98,16 @@ pub fn render(frame: &mut Frame, app: &App) {
             };
             
             let indentation = " ".repeat(*depth);
-            let style = if i == app.selected_task_index {
-                Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            
             let title = clean_html(&t.title);
-            ListItem::new(format!("{}{}{} {}{}", indentation, expand_icon, prefix, title, sync_indicator)).style(style)
+            ListItem::new(format!("{}{}{} {}{}", indentation, expand_icon, prefix, title, sync_indicator))
         })
         .collect();
-    let tasks_list = List::new(task_items).block(tasks_block);
-    frame.render_widget(tasks_list, main_chunks[1]);
+
+    let tasks_list = List::new(task_items)
+        .block(tasks_block)
+        .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD));
+    
+    frame.render_stateful_widget(tasks_list, main_chunks[1], &mut app.task_state);
 
     // Details Pane
     let details_block = Block::default()
@@ -196,7 +191,8 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     let details_paragraph = Paragraph::new(details_text)
         .block(details_block)
-        .wrap(ratatui::widgets::Wrap { trim: true });
+        .wrap(ratatui::widgets::Wrap { trim: true })
+        .scroll((app.detail_scroll, 0));
     frame.render_widget(details_paragraph, main_chunks[2]);
 
     // Status Bar
