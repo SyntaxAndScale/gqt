@@ -150,4 +150,11 @@
 - **UX:** `Up`/`Down` keys now handle list navigation and paragraph scrolling depending on the focused pane. Scrolling resets automatically when a new task is selected.
 - **Versioning:** Incremented version to `0.1.17`.
 
+## 2026-05-02 (TOML Configuration Migration)
+- **Configuration:** Migrated from JSON to TOML for the primary configuration format.
+    - Added `toml` crate dependency.
+    - Updated `src/config.rs` to prioritize `$XDG_CONFIG_HOME/gqt/config.toml`.
+    - Implemented automatic migration: if a legacy JSON configuration is detected, it is automatically converted to TOML and saved to the new XDG-compliant path.
+- **Versioning:** Incremented version to `0.1.18`.
+
 
