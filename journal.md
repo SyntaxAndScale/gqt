@@ -96,6 +96,16 @@
 - **Sync Engine:** Added logs to track the successful promotion of local tasks to remote GQueues tasks.
 - **Versioning:** Incremented version to `0.1.20`.
 
+## 2026-05-02 (Setup Wizard Refinement)
+- **UI:** Refined the first-run Setup Wizard.
+    - Streamlined the flow to go directly to API Key input.
+    - Added "[not yet implemented]" placeholders for future database linking/creation options.
+- **Sync:** Implemented "Bootstrap Sync" in `main.rs`.
+    - Immediately after a successful setup, the app now performs a high-priority sync of queue metadata and the Inbox.
+    - This provides instant visual feedback upon the first launch of the main TUI.
+- **Config:** Removed legacy JSON migration code; the app now uses `config.toml` exclusively.
+- **Versioning:** Incremented version to `0.1.21`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

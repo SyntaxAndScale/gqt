@@ -13,8 +13,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new() -> Result<Self> {
-        let path = Self::get_db_path()?;
+    pub fn new(path: PathBuf) -> Result<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -25,7 +24,7 @@ impl Database {
         Ok(db)
     }
 
-    fn get_db_path() -> Result<PathBuf> {
+    pub fn get_default_db_path() -> Result<PathBuf> {
         let proj_dirs = ProjectDirs::from("com", "gqt", "gqt")
             .ok_or_else(|| anyhow!("Could not determine project directories"))?;
         let data_dir = proj_dirs.data_dir();

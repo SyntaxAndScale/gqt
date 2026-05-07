@@ -8,9 +8,9 @@ use directories::ProjectDirs;
 #[derive(Deserialize, Serialize, Clone)]
 pub struct GqueuesConfig {
     #[serde(rename = "apiEndpoint")]
-    pub api_endpoint: String,
+    pub api_endpoint: Option<String>,
     #[serde(rename = "accessToken")]
-    pub access_token: String,
+    pub access_token: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -111,42 +111,20 @@ impl Default for KeybindingsConfig {
 pub struct Settings {
     pub gqueues: GqueuesConfig,
     pub keybindings: KeybindingsConfig,
+    pub database_path: Option<PathBuf>,
 }
 
-pub fn load_config() -> Result<Settings> {
+pub fn load_config() -> Result<Option<Settings>> {
     let toml_path = get_config_path("config.toml")?;
     
-    let mut settings = if toml_path.exists() {
-        let content = fs::read_to_string(&toml_path)?;
-        toml::from_str::<Settings>(&content)?
-    } else {
-        // Migration / Fallback logic
-        let json_path = get_config_path("config.json")?;
-        let legacy_local_path = std::path::Path::new(".gemini/settings.local.json");
+    if !toml_path.exists() {
+        return Ok(None);
+    }
 
-        let (_legacy_path, content) = if json_path.exists() {
-            (Some(json_path), fs::read_to_string(&get_config_path("config.json")?)?)
-        } else if legacy_local_path.exists() {
-            (Some(legacy_local_path.to_path_buf()), fs::read_to_string(legacy_local_path)?)
-        } else {
-            return Err(anyhow!("Configuration file not found. Please create one at {:?}", toml_path));
-        };
-
-        // Parse legacy JSON
-        let gq_config: GqueuesConfig = serde_json::from_str(&content)
-            .or_else(|_| {
-                // If it's the old full Settings structure
-                let s: serde_json::Value = serde_json::from_str(&content)?;
-                serde_json::from_value(s["gqueues"].clone())
-            })?;
-        
-        Settings {
-            gqueues: gq_config,
-            keybindings: KeybindingsConfig::default(),
-        }
-    };
-
-    // Ensure all default keybindings are present and save back
+    let content = fs::read_to_string(&toml_path)?;
+    let mut settings = toml::from_str::<Settings>(&content)?;
+    
+    // Ensure all default keybindings are present
     let defaults = KeybindingsConfig::default();
     let mut modified = false;
     for (action, key) in defaults.bindings {
@@ -155,23 +133,21 @@ pub fn load_config() -> Result<Settings> {
             modified = true;
         }
     }
-
-    if modified || !toml_path.exists() {
-        let toml_content = toml::to_string_pretty(&settings)?;
-        fs::write(&toml_path, toml_content)?;
-        log::info!("Updated configuration at {:?}", toml_path);
-        
-        // Cleanup old JSON if it was in the XDG path and we just migrated
-        let json_path = get_config_path("config.json")?;
-        if json_path.exists() {
-            let _ = fs::remove_file(json_path);
-        }
+    if modified {
+        save_config(&settings)?;
     }
-
-    Ok(settings)
+    
+    Ok(Some(settings))
 }
 
-fn get_config_path(filename: &str) -> Result<PathBuf> {
+pub fn save_config(settings: &Settings) -> Result<()> {
+    let toml_path = get_config_path("config.toml")?;
+    let toml_content = toml::to_string_pretty(settings)?;
+    fs::write(toml_path, toml_content)?;
+    Ok(())
+}
+
+pub fn get_config_path(filename: &str) -> Result<PathBuf> {
     let proj_dirs = ProjectDirs::from("com", "gqt", "gqt")
         .ok_or_else(|| anyhow!("Could not determine project directories"))?;
     let config_dir = proj_dirs.config_dir();

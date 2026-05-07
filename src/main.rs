@@ -7,6 +7,7 @@ mod keys;
 mod models;
 mod sync;
 mod ui;
+mod wizard;
 
 use anyhow::Result;
 use crossterm::{
@@ -34,12 +35,48 @@ async fn main() -> Result<()> {
     );
     log::info!("Starting Gqueues TUI");
 
-    // Load config
-    let settings = config::load_config()?;
-    let client = std::sync::Arc::new(GqueuesClient::new(settings.gqueues.api_endpoint, settings.gqueues.access_token));
+    // Load config or run wizard
+    let settings = match config::load_config()? {
+        Some(s) => s,
+        None => wizard::run()?,
+    };
+
+    let db_path = settings.database_path.clone()
+        .unwrap_or_else(|| db::Database::get_default_db_path().expect("Could not determine default DB path"));
     
     // Initialize database
-    let db = db::Database::new()?;
+    let db = db::Database::new(db_path)?;
+
+    // Bootstrap Sync (Directive 3)
+    if let Some(ref token) = settings.gqueues.access_token {
+        println!("Connecting to GQueues and performing initial sync...");
+        let endpoint = settings.gqueues.api_endpoint.clone().unwrap_or_else(|| "https://api.gqueues.com".into());
+        let client = GqueuesClient::new(endpoint, token.clone());
+        
+        // 1. Fetch Queues
+        match client.get_queues().await {
+            Ok(queues) => {
+                for q in &queues {
+                    db.upsert_queue(q)?;
+                }
+                
+                // 2. Fetch Inbox tasks immediately
+                if let Some(inbox) = queues.iter().find(|q| q.is_inbox) {
+                    if let Ok(tasks) = client.get_tasks(&inbox.key).await {
+                        for t in tasks {
+                            let mut task = t;
+                            task.queue_key = Some(inbox.key.clone());
+                            db.upsert_task(&task)?;
+                        }
+                        db.mark_tasks_fetched(&inbox.key)?;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Initial sync failed: {}. App will start in offline mode.", e);
+            }
+        }
+    }
 
     // Setup terminal
     enable_raw_mode()?;
@@ -48,37 +85,84 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // Initialize client for App
+    let endpoint = settings.gqueues.api_endpoint.clone().unwrap_or_else(|| "https://api.gqueues.com".into());
+    let token = settings.gqueues.access_token.clone().unwrap_or_default();
+    let client = std::sync::Arc::new(GqueuesClient::new(endpoint, token));
+    
     // Create app state
     let mut app = App::new((*client).clone(), db);
     
     // Setup Key Handler
     let mut key_handler = KeyHandler::new(&settings.keybindings);
 
-    // Setup Sync Engine
-    let (sync_tx, mut sync_rx) = mpsc::channel(32);
-    let (cmd_tx, cmd_rx) = mpsc::channel(32);
-    let mut sync_engine = SyncEngine::new(client, app.db.clone(), app.active_queue_key.clone(), sync_tx, cmd_rx);
-    tokio::spawn(async move {
-        sync_engine.run().await;
-    });
+    // Setup Sync Engine (only if token is available)
+    let (cmd_tx, mut _cmd_rx_sink) = mpsc::channel(1); // Placeholder
+    let (sync_tx, sync_rx) = mpsc::channel(32);
+    
+    if settings.gqueues.access_token.is_some() {
+        let (tx, rx) = mpsc::channel(32);
+        let mut sync_engine = SyncEngine::new(client.clone(), app.db.clone(), app.active_queue_key.clone(), sync_tx, rx);
+        tokio::spawn(async move {
+            sync_engine.run().await;
+        });
+        // Override the placeholder cmd_tx with the real one
+        let real_cmd_tx = tx;
+        
+        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, real_cmd_tx).await?;
+    } else {
+        app.status = "Offline Mode".into();
+        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, cmd_tx).await?;
+    }
 
+    // Restore terminal
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+    )?;
+    terminal.show_cursor()?;
+
+    Ok(())
+}
+
+async fn run_main_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    key_handler: &mut KeyHandler,
+    mut sync_rx: mpsc::Receiver<SyncEvent>,
+    cmd_tx: mpsc::Sender<SyncCommand>,
+) -> Result<()> {
     // Load initial state from DB
     {
         let db = app.db.lock().unwrap();
         if let Ok(queues) = db.get_queues() {
             app.queues = queues;
         }
-        let selected = app.nav_state.selected().unwrap_or(0);
-        if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(selected) {
-            if let Ok(tasks) = db.get_tasks(&queue.key) {
+        
+        let active_key = {
+            let active = app.active_queue_key.lock().unwrap();
+            active.clone()
+        };
+
+        let key_to_load = active_key.or_else(|| {
+            app.queues.iter().find(|q| q.is_inbox).map(|q| q.key.clone())
+        });
+
+        if let Some(key) = key_to_load {
+            if let Ok(tasks) = db.get_tasks(&key) {
                 app.tasks = tasks;
+                // Update active key if we auto-selected inbox
+                let mut active = app.active_queue_key.lock().unwrap();
+                if active.is_none() {
+                    *active = Some(key);
+                }
             }
         }
     }
 
-    // Main loop
     while app.running {
-        terminal.draw(|f| ui::render(f, &mut app))?;
+        terminal.draw(|f| ui::render(f, app))?;
 
         // Check for sync events
         while let Ok(event) = sync_rx.try_recv() {
@@ -137,8 +221,6 @@ async fn main() -> Result<()> {
                             app.status = "⏳ Manual sync triggered...".into();
                             let _ = cmd_tx.send(SyncCommand::ForceSync).await;
                         }
-
-
                         Action::NextPane => app.next_pane(),
                         Action::PrevPane => app.previous_pane(),
                         Action::Select => {
@@ -156,24 +238,20 @@ async fn main() -> Result<()> {
                                         }
                                         NavEntry::Queue(queue) => {
                                             let queue_key = queue.key.clone();
-                                            // Set active queue for sync engine
                                             {
                                                 let mut active = app.active_queue_key.lock().unwrap();
                                                 *active = Some(queue_key.clone());
                                             }
                                             app.status = format!("⏳ Loading {}...", queue.name);
-                                            
-                                            {
-                                                let db = app.db.lock().unwrap();
-                                                match db.get_tasks(&queue_key) {
-                                                    Ok(tasks) => {
-                                                        app.tasks = tasks;
-                                                        app.task_state.select(Some(0));
-                                                        app.detail_scroll = 0;
-                                                        app.status = format!("✅ Loaded {}", queue.name);
-                                                    }
-                                                    Err(e) => app.status = format!("❌ Local DB error: {}", e),
+                                            let db = app.db.lock().unwrap();
+                                            match db.get_tasks(&queue_key) {
+                                                Ok(tasks) => {
+                                                    app.tasks = tasks;
+                                                    app.task_state.select(Some(0));
+                                                    app.detail_scroll = 0;
+                                                    app.status = format!("✅ Loaded {}", queue.name);
                                                 }
+                                                Err(e) => app.status = format!("❌ Local DB error: {}", e),
                                             }
                                         }
                                     }
@@ -184,7 +262,6 @@ async fn main() -> Result<()> {
                             if let Some(queue) = app.selected_queue() {
                                 let queue_key = queue.key.clone();
                                 app.status = format!("⏳ Creating task in {}...", queue.name);
-                                // Mock task creation for now (could be an input field later)
                                 let new_task = crate::gqueues::models::Task {
                                     key: "".into(),
                                     title: "New Local Task".into(),
@@ -224,7 +301,6 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             } else if app.active_pane == Pane::Queues {
-                                // Also support category toggling per todo list
                                 let nav_entries = app.get_nav_entries();
                                 let selected = app.nav_state.selected().unwrap_or(0);
                                 if let Some(entry) = nav_entries.get(selected) {
@@ -252,7 +328,7 @@ async fn main() -> Result<()> {
                                     let current = app.task_state.selected().unwrap_or(0);
                                     if current < visible_tasks.len().saturating_sub(1) {
                                         app.task_state.select(Some(current + 1));
-                                        app.detail_scroll = 0; // Reset scroll on task change
+                                        app.detail_scroll = 0;
                                     }
                                 }
                                 Pane::Details => {
@@ -272,7 +348,7 @@ async fn main() -> Result<()> {
                                     let current = app.task_state.selected().unwrap_or(0);
                                     if current > 0 {
                                         app.task_state.select(Some(current - 1));
-                                        app.detail_scroll = 0; // Reset scroll on task change
+                                        app.detail_scroll = 0;
                                     }
                                 }
                                 Pane::Details => {
@@ -281,12 +357,10 @@ async fn main() -> Result<()> {
                             }
                         }
                         Action::GoToInbox => {
-                            // Find inbox in queues
                             if let Some(inbox) = app.queues.iter().find(|q| q.is_inbox) {
                                 let inbox_key = inbox.key.clone();
                                 let mut active = app.active_queue_key.lock().unwrap();
                                 *active = Some(inbox_key.clone());
-                                // We don't change selection index for now, but we could find it in nav_entries
                                 app.status = "⏳ Jumping to Inbox...".into();
                                 let db = app.db.lock().unwrap();
                                 if let Ok(tasks) = db.get_tasks(&inbox_key) {
@@ -297,7 +371,6 @@ async fn main() -> Result<()> {
                             }
                         }
                         Action::Cancel => {
-                            // Clear sequence or search
                             app.status = "Ready".into();
                         }
                         _ => {
@@ -308,14 +381,5 @@ async fn main() -> Result<()> {
             }
         }
     }
-
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-    )?;
-    terminal.show_cursor()?;
-
     Ok(())
 }
