@@ -124,6 +124,15 @@
 - **UI:** The TUI status bar now reflects granular sync progress, showing exactly which task or queue is being processed.
 - **Versioning:** Incremented version to `0.1.23`.
 
+## 2026-05-02 (Interactive Help Screen)
+- **UI:** Implemented an interactive modal help screen triggered by the `?` key.
+    - Displays application version, configuration file path, and database path.
+    - Dynamically lists all keyboard shortcuts from the user's `config.toml`.
+    - Implemented visual indicators for the roadmap: implemented actions are highlighted, while future actions are greyed out and marked as `[not yet implemented]`.
+    - Added a right-aligned hint in the status bar: `Press ? for help`.
+- **State Management:** Added `show_help`, `config_path`, and `db_path` to the `App` state.
+- **Versioning:** Incremented version to `0.1.24`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

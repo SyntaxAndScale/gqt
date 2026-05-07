@@ -3,6 +3,8 @@ use crate::db::Database;
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
 use ratatui::widgets::ListState;
+use std::path::PathBuf;
+use crate::config::KeybindingsConfig;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -23,18 +25,28 @@ pub struct App {
     pub active_queue_key: Arc<Mutex<Option<String>>>,
     pub expanded_categories: HashSet<String>,
     pub expanded_tasks: HashSet<String>,
+    pub keybindings: KeybindingsConfig,
     pub queues: Vec<Queue>,
     pub tasks: Vec<Task>,
     pub nav_state: ListState,
     pub task_state: ListState,
     pub detail_scroll: u16,
+    pub show_help: bool,
+    pub config_path: PathBuf,
+    pub db_path: PathBuf,
     pub active_pane: Pane,
     pub running: bool,
     pub status: String,
 }
 
 impl App {
-    pub fn new(client: GqueuesClient, db: Database) -> Self {
+    pub fn new(
+        client: GqueuesClient, 
+        db: Database, 
+        config_path: PathBuf, 
+        db_path: PathBuf,
+        keybindings: KeybindingsConfig,
+    ) -> Self {
         let mut nav_state = ListState::default();
         nav_state.select(Some(0));
         let mut task_state = ListState::default();
@@ -46,11 +58,15 @@ impl App {
             active_queue_key: Arc::new(Mutex::new(None)),
             expanded_categories: HashSet::new(),
             expanded_tasks: HashSet::new(),
+            keybindings,
             queues: Vec::new(),
             tasks: Vec::new(),
             nav_state,
             task_state,
             detail_scroll: 0,
+            show_help: false,
+            config_path,
+            db_path,
             active_pane: Pane::Queues,
             running: true,
             status: "Ready".into(),

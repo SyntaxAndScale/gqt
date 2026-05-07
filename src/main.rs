@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| db::Database::get_default_db_path().expect("Could not determine default DB path"));
     
     // Initialize database
-    let db = db::Database::new(db_path)?;
+    let db = db::Database::new(db_path.clone())?;
 
     // Setup terminal
     enable_raw_mode()?;
@@ -63,13 +63,14 @@ async fn main() -> Result<()> {
     let client = std::sync::Arc::new(GqueuesClient::new(endpoint, token));
     
     // Create app state
-    let mut app = App::new((*client).clone(), db);
+    let config_path = config::get_config_path("config.toml")?;
+    let mut app = App::new((*client).clone(), db, config_path, db_path, settings.keybindings.clone());
     
     // Setup Key Handler
     let mut key_handler = KeyHandler::new(&settings.keybindings);
 
     // Setup Sync Engine (only if token is available)
-    let (cmd_tx, mut _cmd_rx_sink) = mpsc::channel(1); // Placeholder
+    let (cmd_tx, _cmd_rx_sink) = mpsc::channel(32);
     let (sync_tx, sync_rx) = mpsc::channel(32);
     
     if settings.gqueues.access_token.is_some() {
@@ -78,10 +79,8 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             sync_engine.run().await;
         });
-        // Override the placeholder cmd_tx with the real one
-        let real_cmd_tx = tx;
         
-        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, real_cmd_tx).await?;
+        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, tx).await?;
     } else {
         app.status = "Offline Mode".into();
         run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, cmd_tx).await?;
@@ -345,8 +344,15 @@ async fn run_main_loop(
                                 }
                             }
                         }
+                        Action::Help => {
+                            app.show_help = true;
+                        }
                         Action::Cancel => {
-                            app.status = "Ready".into();
+                            if app.show_help {
+                                app.show_help = false;
+                            } else {
+                                app.status = "Ready".into();
+                            }
                         }
                         _ => {
                             app.status = format!("Action {:?} not yet implemented", action);

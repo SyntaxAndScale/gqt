@@ -32,5 +32,6 @@
 
 ## Layout Components
 1. **Left Pane (Queues):** Categorized and collapsible navigation. Queues are grouped by API `categoryName` or `teamName`, with support for "Personal" and "Archive" sorting priorities.
-2. **Center Pane (Tasks):** Filtered list of tasks for the selected queue.
-3. **Right Pane (Details):** Metadata, notes, and subtasks for the selected task.
+2. **Center Pane (Tasks):** Filtered list of tasks for the selected queue. Supports hierarchical sub-tasks.
+3. **Right Pane (Details):** Metadata, notes, and subtasks for the selected task. Includes rich formatting for tags and dates.
+4. **Help Modal:** An interactive overlay (`?`) displaying app metadata and dynamic keybindings.

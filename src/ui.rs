@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style, Modifier},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Clear},
     Frame,
 };
 
@@ -205,6 +205,100 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     } else {
         Style::default().add_modifier(Modifier::DIM)
     };
+
+    let status_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(20),
+        ])
+        .split(chunks[1]);
+
     let status_bar = Paragraph::new(app.status.as_str()).style(status_style);
-    frame.render_widget(status_bar, chunks[1]);
+    frame.render_widget(status_bar, status_chunks[0]);
+
+    let help_hint = Paragraph::new("Press ? for help")
+        .style(Style::default().add_modifier(Modifier::DIM))
+        .alignment(ratatui::layout::Alignment::Right);
+    frame.render_widget(help_hint, status_chunks[1]);
+
+    // Help Modal
+    if app.show_help {
+        render_help_modal(frame, app);
+    }
+}
+
+fn render_help_modal(frame: &mut Frame, app: &App) {
+    let area = centered_rect(80, 80, frame.area());
+    frame.render_widget(Clear, area); // Clear the background
+    
+    let block = Block::default()
+        .title(" Gqueues TUI Help ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    
+    let mut help_text = Vec::new();
+    help_text.push(ratatui::text::Line::from(vec![
+        ratatui::text::Span::styled("Gqueues TUI ", Style::default().add_modifier(Modifier::BOLD)),
+        ratatui::text::Span::raw(format!("v{}", env!("CARGO_PKG_VERSION"))),
+    ]));
+    help_text.push(ratatui::text::Line::from(""));
+    help_text.push(ratatui::text::Line::from(format!("Config: {}", app.config_path.display())));
+    help_text.push(ratatui::text::Line::from(format!("Database: {}", app.db_path.display())));
+    help_text.push(ratatui::text::Line::from(""));
+    help_text.push(ratatui::text::Line::from(ratatui::text::Span::styled("Keyboard Shortcuts:", Style::default().add_modifier(Modifier::UNDERLINED))));
+    help_text.push(ratatui::text::Line::from(""));
+
+    // Categorized actions for display
+    let implemented_actions = vec![
+        "quit", "sync", "next_pane", "prev_pane", "cancel",
+        "quick_add", "toggle_expand", "toggle_subtasks",
+        "move_up", "move_down", "select", "go_to_inbox", "help"
+    ];
+
+    let mut sorted_bindings: Vec<_> = app.keybindings.bindings.iter().collect();
+    sorted_bindings.sort_by_key(|(a, _)| *a);
+
+    for (action, key) in sorted_bindings {
+        let is_implemented = implemented_actions.contains(&action.as_str()) 
+            || action.starts_with("move_up") || action.starts_with("move_down");
+        
+        let style = if is_implemented {
+            Style::default()
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        let action_display = format!("{}{}", action, if is_implemented { "" } else { " [not yet implemented]" });
+        help_text.push(ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(format!("{: <25}", action_display), style),
+            ratatui::text::Span::styled(key.to_string(), style.fg(Color::Yellow)),
+        ]));
+    }
+
+    let help_p = Paragraph::new(help_text)
+        .block(block)
+        .wrap(ratatui::widgets::Wrap { trim: true });
+    
+    frame.render_widget(help_p, area);
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
