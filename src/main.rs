@@ -139,6 +139,9 @@ async fn run_main_loop(
         // Check for sync events
         while let Ok(event) = sync_rx.try_recv() {
             match event {
+                SyncEvent::InProgress { message } => {
+                    app.status = message;
+                }
                 SyncEvent::Complete { unfetched, total } => {
                     if unfetched > 0 {
                         app.status = format!("⏳ Syncing: {}/{} queues remaining...", unfetched, total);

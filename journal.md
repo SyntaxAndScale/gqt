@@ -116,6 +116,14 @@
 - **Config:** Removed legacy migration logic; the app now uses `config.toml` exclusively.
 - **Versioning:** Incremented version to `0.1.22`.
 
+## 2026-05-02 (Real-time Sync Status)
+- **Sync Engine:** Enhanced visibility of background operations.
+    - Added `InProgress` variant to `SyncEvent` to allow real-time progress reporting.
+    - Updated `SyncEngine` to emit status updates for each major operation (e.g., fetching metadata, syncing specific queues, promoting tasks).
+    - Reduced initial sync delay from 60 seconds to 1 second to ensure background reconciliation starts immediately after launch.
+- **UI:** The TUI status bar now reflects granular sync progress, showing exactly which task or queue is being processed.
+- **Versioning:** Incremented version to `0.1.23`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

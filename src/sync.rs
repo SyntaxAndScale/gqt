@@ -11,6 +11,7 @@ use rusqlite::OptionalExtension;
 use chrono::Utc;
 
 pub enum SyncEvent {
+    InProgress { message: String },
     Complete { unfetched: usize, total: usize },
     Error(String),
 }
@@ -40,7 +41,7 @@ impl SyncEngine {
 
     pub async fn run(&mut self) {
         let mut retry_count = 0;
-        let mut interval = Duration::from_secs(60);
+        let mut interval = Duration::from_secs(1); // Start first cycle almost immediately
 
         loop {
             tokio::select! {
@@ -69,6 +70,7 @@ impl SyncEngine {
     }
 
     async fn handle_sync_cycle(&self, retry_count: &mut u32) -> Duration {
+        let _ = self.tx.send(SyncEvent::InProgress { message: "⏳ Sync in progress...".into() }).await;
         match self.sync_cycle().await {
             Ok(stats) => {
                 *retry_count = 0;
@@ -133,6 +135,7 @@ impl SyncEngine {
             
             match operation {
                 Operation::CreateTask(task) => {
+                    let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", task.title) }).await;
                     log::info!("Sync Engine: Promoting local task '{}' (Local Key: {}) to GQueues", task.title, task.key);
                     match self.client.create_task_with_idempotency(
                         &task.title,
@@ -160,6 +163,7 @@ impl SyncEngine {
 
     async fn pull_remote_changes(&self) -> Result<()> {
         // 1. Fetch current queue metadata from API
+        let _ = self.tx.send(SyncEvent::InProgress { message: "⏳ Fetching queue metadata...".into() }).await;
         let api_queues = self.client.get_queues().await
             .map_err(|e| anyhow!(e))?;
         
@@ -220,6 +224,7 @@ impl SyncEngine {
             };
 
             if let Some(q) = stale_queue {
+                let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", q.name) }).await;
                 log::debug!("Background Sync: Checking stale queue: {}", q.name);
                 let tasks = self.client.get_tasks(&q.key).await
                     .map_err(|e| anyhow!(e))?;
@@ -234,6 +239,7 @@ impl SyncEngine {
             }
         } else {
             for queue in modified_queues {
+                let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", queue.name) }).await;
                 log::info!("Syncing tasks for queue: {} (Key: {})", queue.name, queue.key);
                 let tasks = self.client.get_tasks(&queue.key).await
                     .map_err(|e| anyhow!(e))?;
