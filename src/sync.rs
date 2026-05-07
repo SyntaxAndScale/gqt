@@ -133,6 +133,7 @@ impl SyncEngine {
             
             match operation {
                 Operation::CreateTask(task) => {
+                    log::info!("Sync Engine: Promoting local task '{}' (Local Key: {}) to GQueues", task.title, task.key);
                     match self.client.create_task_with_idempotency(
                         &task.title,
                         task.queue_key.as_deref(),
@@ -140,11 +141,15 @@ impl SyncEngine {
                         &idem_key
                     ).await {
                         Ok(remote_task) => {
+                            log::info!("Sync Engine: Successfully promoted '{}'. New Remote Key: {}", task.title, remote_task.key);
                             let db = self.db.lock().unwrap();
                             db.update_task_remote_key(&task.key, &remote_task.key)?;
                             db.mark_transaction_synced(&tx_id)?;
                         }
-                        Err(e) => return Err(anyhow!(e)),
+                        Err(e) => {
+                            log::error!("Sync Engine: Failed to promote task '{}': {}", task.title, e);
+                            return Err(anyhow!(e));
+                        }
                     }
                 }
                 _ => {}

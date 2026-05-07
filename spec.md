@@ -18,8 +18,10 @@
 ## Architecture
 - **TUI Layer:** Handles rendering and user input via Ratatui (`src/ui.rs`).
 - **State Management:** A central state object managing the current view and task data (`src/app.rs`).
-- **GQueues API Module:** A decoupled module (`src/gqueues/`) containing the API client and models, designed for future library extraction.
-- **Sync Engine:** Manages the local cache and handles background synchronization with the Gqueues API.
+- **GQueues API Module:** A decoupled module (`src/gqueues/`) containing the API client and models.
+- **Persistence Layer:** SQLite database using `rusqlite`, following **XDG best practices** (stored in `$XDG_DATA_HOME/gqt`).
+- **Sync Engine:** A background task using `tokio::select!` and exponential backoff to reconcile local and remote states.
+- **Robust Identity Mapping:** Uses internal UUIDs (`local_id`) for all database relationships to ensure data integrity for local-only tasks, with NULL-safe resolution for GQueues `remote_key` promotion.
 - **CRDT Strategy:** 
     - Operations (Create, Update, Delete) are stored in a local **Transaction Log**.
     - Each transaction has a timestamp and a unique ID.

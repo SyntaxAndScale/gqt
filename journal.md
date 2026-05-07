@@ -86,6 +86,16 @@
     - Mapped `j`/`k` for navigation and `Ctrl-c` for quitting by default.
 - **Versioning:** Incremented version to `0.1.19`.
 
+## 2026-05-02 (Task Routing & Persistence Fixes)
+- **API Client:** Fixed task routing issue where new tasks were defaulting to the Inbox.
+    - Updated `create_task_with_idempotency` to explicitly set `parseQuickAddSyntax: false` when a `queueKey` is provided.
+    - Added detailed debug logging of the outgoing JSON request body to `gqt.log`.
+- **Database:** Fixed "disappearing tasks" bug by improving data integrity.
+    - Refactored `upsert_task` and `add_task_local` to use NULL-safe `IS` comparisons for relationship resolution.
+    - Ensured subqueries for `queue_id` and `parent_key` check both `remote_key` and `local_id`, preventing silent insert failures for local-only items.
+- **Sync Engine:** Added logs to track the successful promotion of local tasks to remote GQueues tasks.
+- **Versioning:** Incremented version to `0.1.20`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

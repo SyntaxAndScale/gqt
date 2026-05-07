@@ -18,6 +18,7 @@
     - [x] Metadata-first sync (lastModified check).
     - [x] Respect Retry-After header.
     - [x] XDG config migration.
+- [x] Fix task routing to active queue and improve local persistence.
 - [ ] Phase 5: Initial Sync UX & Progress (0.1.11)
     - [ ] Add `tasks_fetched` tracking to database.
     - [ ] Implement Inbox-first task fetching.
@@ -50,3 +51,7 @@
 - [x] When navigating the category list, make it so that the space bar can be pressed to expand/collapse a category
 - [ ] Implement the same shortcut keys for hiding/showing the left and right panels as VSCode uses for the left and right side panels.
 - [x] Implment a shortcut key press to 'Sync now' which shoudl basically force a sync between the local database and the gqueues web service.
+- [ ] BUG: When adding a new task to the local DB, it still doesn't appear to be sync'ing to the gqueues web service. 
+- [ ] BUG: The force-sync keyboard shortcut 's' conflicts with the gqueues reference for keyboard shortcuts. Lets change the force-sync to be 'control-s'
+- [ ] BUG: I noticed that when starting gqt when there is not a local database, that it did not begin sync'ing automatically. I had to initiate a force sync in order to get the local database started. RULE: if there is a gqueues api key in the config.toml file, but no local database, then we should initiate a sync.
+- [ ] Change the defafult keyboard shortcut to quit to be 'control-q'. This should also be configurable so please create the appropriate Action enum and entry for config.toml.

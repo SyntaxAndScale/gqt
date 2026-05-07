@@ -94,9 +94,14 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    let selected = app.nav_state.selected().unwrap_or(0);
-                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(selected) {
-                        if let Ok(tasks) = db.get_tasks(&queue.key) {
+                    
+                    let active_key = {
+                        let active = app.active_queue_key.lock().unwrap();
+                        active.clone()
+                    };
+
+                    if let Some(key) = active_key {
+                        if let Ok(tasks) = db.get_tasks(&key) {
                             app.tasks = tasks;
                         }
                     }
@@ -108,9 +113,14 @@ async fn main() -> Result<()> {
                     if let Ok(queues) = db.get_queues() {
                         app.queues = queues;
                     }
-                    let selected = app.nav_state.selected().unwrap_or(0);
-                    if let Some(NavEntry::Queue(queue)) = app.get_nav_entries().get(selected) {
-                        if let Ok(tasks) = db.get_tasks(&queue.key) {
+                    
+                    let active_key = {
+                        let active = app.active_queue_key.lock().unwrap();
+                        active.clone()
+                    };
+
+                    if let Some(key) = active_key {
+                        if let Ok(tasks) = db.get_tasks(&key) {
                             app.tasks = tasks;
                         }
                     }
@@ -124,9 +134,11 @@ async fn main() -> Result<()> {
                     match action {
                         Action::Quit => app.running = false,
                         Action::Sync => {
-                            app.status = "⏳ Force sync triggered...".into();
+                            app.status = "⏳ Manual sync triggered...".into();
                             let _ = cmd_tx.send(SyncCommand::ForceSync).await;
                         }
+
+
                         Action::NextPane => app.next_pane(),
                         Action::PrevPane => app.previous_pane(),
                         Action::Select => {

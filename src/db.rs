@@ -216,7 +216,10 @@ impl Database {
 
         self.conn.execute(
             "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             VALUES (?1, ?2, 
+                (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
+                (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(remote_key) DO UPDATE SET
                 title = excluded.title,
                 notes = excluded.notes,
@@ -258,10 +261,21 @@ impl Database {
 
     pub fn get_tasks(&self, queue_key: &str) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.remote_key, t.title, t.notes, t.completed, q.remote_key, t.parent_key, t.tags, t.assignments, t.creation_date, t.due_date, t.repeats
+            "SELECT 
+                t.remote_key, 
+                t.title, 
+                t.notes, 
+                t.completed, 
+                q.remote_key as queue_key, 
+                (SELECT p.remote_key FROM tasks p WHERE p.local_id = t.parent_key) as parent_key,
+                t.tags, 
+                t.assignments, 
+                t.creation_date, 
+                t.due_date, 
+                t.repeats
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
-             WHERE q.remote_key = ?1",
+             WHERE q.remote_key = ?1 OR q.local_id = ?1",
         )?;
         let rows = stmt.query_map([queue_key], |row| {
             Ok(Task {
@@ -300,7 +314,10 @@ impl Database {
 
         self.conn.execute(
             "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
-             VALUES (?1, ?2, (SELECT local_id FROM queues WHERE remote_key = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             VALUES (?1, ?2, 
+                (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
+                (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             (
                 &local_id,
                 &task.key,

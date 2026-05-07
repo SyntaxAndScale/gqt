@@ -127,7 +127,7 @@ impl GqueuesClient {
         let url = format!("{}/v0", self.base_url);
         let mut instruction = serde_json::json!({
             "text": text,
-            "parseQuickAddSyntax": true,
+            "parseQuickAddSyntax": queue_key.is_none(), // Disable if we have an explicit queue
         });
         
         if let Some(qk) = queue_key {
@@ -141,6 +141,8 @@ impl GqueuesClient {
             "action": "createTask",
             "instructions": [instruction]
         });
+
+        log::debug!("createTask request body: {}", body);
 
         let resp = self.client
             .post(url)
