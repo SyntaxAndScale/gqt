@@ -106,6 +106,16 @@
 - **Config:** Removed legacy JSON migration code; the app now uses `config.toml` exclusively.
 - **Versioning:** Incremented version to `0.1.21`.
 
+## 2026-05-02 (Bootstrap Sync UX Refinement)
+- **UI:** Fully integrated the first-run initialization and bootstrap sync into the TUI.
+    - The "Connecting to GQueues..." and initial sync status are now rendered using Ratatui within the wizard.
+    - Streamlined onboarding by bypassing the welcome screen and going directly to API key entry.
+- **Sync:** 
+    - Moved high-priority bootstrap sync (Queues + Inbox) into the wizard to ensure data is ready before the main TUI opens.
+    - Standardized sequential background syncing for remaining queues with real-time status bar updates.
+- **Config:** Removed legacy migration logic; the app now uses `config.toml` exclusively.
+- **Versioning:** Incremented version to `0.1.22`.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

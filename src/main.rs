@@ -38,7 +38,10 @@ async fn main() -> Result<()> {
     // Load config or run wizard
     let settings = match config::load_config()? {
         Some(s) => s,
-        None => wizard::run()?,
+        None => {
+            let default_db_path = db::Database::get_default_db_path()?;
+            wizard::run(default_db_path).await?
+        }
     };
 
     let db_path = settings.database_path.clone()
@@ -46,37 +49,6 @@ async fn main() -> Result<()> {
     
     // Initialize database
     let db = db::Database::new(db_path)?;
-
-    // Bootstrap Sync (Directive 3)
-    if let Some(ref token) = settings.gqueues.access_token {
-        println!("Connecting to GQueues and performing initial sync...");
-        let endpoint = settings.gqueues.api_endpoint.clone().unwrap_or_else(|| "https://api.gqueues.com".into());
-        let client = GqueuesClient::new(endpoint, token.clone());
-        
-        // 1. Fetch Queues
-        match client.get_queues().await {
-            Ok(queues) => {
-                for q in &queues {
-                    db.upsert_queue(q)?;
-                }
-                
-                // 2. Fetch Inbox tasks immediately
-                if let Some(inbox) = queues.iter().find(|q| q.is_inbox) {
-                    if let Ok(tasks) = client.get_tasks(&inbox.key).await {
-                        for t in tasks {
-                            let mut task = t;
-                            task.queue_key = Some(inbox.key.clone());
-                            db.upsert_task(&task)?;
-                        }
-                        db.mark_tasks_fetched(&inbox.key)?;
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Initial sync failed: {}. App will start in offline mode.", e);
-            }
-        }
-    }
 
     // Setup terminal
     enable_raw_mode()?;

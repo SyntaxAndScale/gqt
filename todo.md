@@ -63,3 +63,6 @@
 - [ ] Add a command to open config.toml so it is easy to find and update the api key manually if necessary
 - [ ] Split out `gqueues-api-rs`, create an open source repo for it, license it, and update gqt to reference it on github
 - [ ] 1st pass basic/quick review to clean up egregious AI slop
+- [ ] Fix up journal.md so that the dates are informed by the git history.
+- [ ] Make sure there are no sensitive files or logs in commit history and are in .gitignore
+- [ ] Write up a rough roadmap that includes all the workflows supported by shortcut keys and the sequence / order in which they are intended to be implemented.
