@@ -66,4 +66,4 @@
 - [ ] Update the help screen with the github url
 - [ ] Update `spec.md` with the latest information based on current state of code. Should include urls to api documentation and keyboard shortcut documentation. 
 - [ ] Add a disclaimer to help screen and readme.md that this is not an official gqueues product
-- [ ] 
+- [ ] Spin out gqueues-api-rs
