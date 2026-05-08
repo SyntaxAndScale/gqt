@@ -27,6 +27,12 @@
 
 ## Architecture
 - [x] Refactor API client into a decoupled module for future extraction as a standalone library.
+- [x] Extract `gqueues-api-rs` into a standalone crate at `~/Projects/gqueues-api-rs`.
+- [ ] Hardening of `gqueues-api-rs`:
+    - [ ] Exhaustive error handling with `thiserror`.
+    - [ ] Implement `GqueuesClientBuilder`.
+    - [ ] Add integration tests with `wiremock`.
+    - [ ] Public API and documentation audit.
 
 ## UI & Navigation
 - [x] Implement categorized/grouped queues in the left pane.

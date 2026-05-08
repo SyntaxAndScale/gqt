@@ -1,7 +1,6 @@
 mod actions;
 mod app;
 mod db;
-mod gqueues;
 mod config;
 mod keys;
 mod models;
@@ -21,7 +20,7 @@ use tokio::sync::mpsc;
 
 use crate::actions::Action;
 use crate::app::{App, Pane, NavEntry};
-use crate::gqueues::GqueuesClient;
+use gqueues_api_rs::GqueuesClient;
 use crate::keys::KeyHandler;
 use crate::sync::{SyncEngine, SyncEvent, SyncCommand};
 
@@ -236,7 +235,7 @@ async fn run_main_loop(
                             if let Some(queue) = app.selected_queue() {
                                 let queue_key = queue.key.clone();
                                 app.status = format!("⏳ Creating task in {}...", queue.name);
-                                let new_task = crate::gqueues::models::Task {
+                                let new_task = gqueues_api_rs::models::Task {
                                     key: "".into(),
                                     title: "New Local Task".into(),
                                     notes: Some("Created offline".into()),

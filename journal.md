@@ -133,6 +133,14 @@
 - **State Management:** Added `show_help`, `config_path`, and `db_path` to the `App` state.
 - **Versioning:** Incremented version to `0.1.24`.
 
+## 2026-05-08 (Library Extraction - Clean Break)
+- **Architecture:** Successfully externalized the GQueues API client into a standalone crate.
+    - Created a new repository at `~/Projects/gqueues-api-rs`.
+    - Migrated `client.rs` and `models.rs` from the internal `gqueues` module to the new library.
+    - Updated `gqt` to use the new library as a path dependency (`gqueues-api-rs`).
+    - Verified full decoupling: removed the internal `src/gqueues` directory and updated all imports.
+    - Confirmed `gqt` remains functional and compiles successfully.
+
 
 ## 2026-05-02 (Categorized Navigation)
 - **UI:** Implemented categorized and collapsible queues in the left navigation pane.

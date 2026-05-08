@@ -4,7 +4,7 @@ use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::gqueues::models::{Queue, Task};
+use gqueues_api_rs::models::{Queue, Task};
 use chrono::Utc;
 use uuid::Uuid;
 

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::gqueues::models::Task;
+use gqueues_api_rs::models::Task;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {

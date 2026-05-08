@@ -15,7 +15,7 @@ use std::io;
 use std::path::PathBuf;
 use crate::config::{Settings, GqueuesConfig, save_config, KeybindingsConfig};
 use crate::db::Database;
-use crate::gqueues::GqueuesClient;
+use gqueues_api_rs::GqueuesClient;
 
 #[derive(PartialEq)]
 enum WizardState {

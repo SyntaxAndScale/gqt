@@ -655,6 +655,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "directories",
+ "gqueues-api-rs",
  "html-escape",
  "log",
  "ratatui",
@@ -667,6 +668,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
+ "uuid",
+]
+
+[[package]]
+name = "gqueues-api-rs"
+version = "0.1.0"
+source = "git+https://github.com/SyntaxAndScale/gqueues-api-rs#91c119f6d55ab6b1e6b59d1ed2e0af7cf6e0af95"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "log",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
  "uuid",
 ]
 

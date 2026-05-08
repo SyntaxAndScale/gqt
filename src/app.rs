@@ -1,4 +1,4 @@
-use crate::gqueues::{GqueuesClient, Queue, Task};
+use gqueues_api_rs::{GqueuesClient, Queue, Task};
 use crate::db::Database;
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
