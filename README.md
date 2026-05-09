@@ -59,8 +59,8 @@ On the first launch, `gqt` will guide you through an interactive setup wizard:
 - [ ] Extensions / Plug-ins for custom workflows
 
 ## Contributing
+TBD
 
 ## License
-
 *License choice pending.*
 
