@@ -673,10 +673,9 @@ dependencies = [
 
 [[package]]
 name = "gqueues-api-rs"
-version = "0.1.0"
-source = "git+https://github.com/SyntaxAndScale/gqueues-api-rs#91c119f6d55ab6b1e6b59d1ed2e0af7cf6e0af95"
+version = "0.2.0"
+source = "git+https://github.com/SyntaxAndScale/gqueues-api-rs?tag=v0.2.0#4924e5f5880d72b25004d07349ec577ad44f31ad"
 dependencies = [
- "anyhow",
  "chrono",
  "log",
  "reqwest",

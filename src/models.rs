@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
 use gqueues_api_rs::models::Task;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
-    CreateTask(Task),
-    UpdateTask(Task),
-    DeleteTask(String), // key
-    CompleteTask(String), // key
+    Create(Task),
+    Update(Task),
+    Delete(String),   // key
+    Complete(String), // key
 }

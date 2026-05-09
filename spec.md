@@ -1,37 +1,52 @@
 # Technical Specification: Gqueues TUI (gqt)
 
+## Overview
+`gqt` is a high-performance, terminal-based task manager for GQueues. It is designed to be offline-first, using a local SQLite database and a background synchronization engine to reconcile state with the official GQueues API.
+
 ## Technology Stack
 - **Language:** Rust
 - **UI Framework:** Ratatui
+- **Async Runtime:** Tokio
+- **Persistence:** SQLite via `rusqlite`
+- **Configuration:** TOML
+- **API Client:** `gqueues-api-rs` (External Crate)
+
+## Code Architecture
+
+### 1. TUI Layer (`src/ui.rs`)
+The UI is built using a three-pane layout:
+- **Left (Queues):** Tree-like navigation with collapsible categories.
+- **Center (Tasks):** Hierarchical task list with support for sub-tasks.
+- **Right (Details):** Metadata display for the selected task.
+
+### 2. State Management (`src/app.rs`)
+A central `App` struct maintains the state of the TUI, including navigation indices (`ListState`), cached data, and UI visibility flags (e.g., help modal).
+
+### 3. Sync Engine (`src/sync.rs`)
+A dedicated background task that runs independently of the UI. It follows a dual-phase reconciliation strategy:
+1. **Push Phase:** Sequentially promotes local transactions (stored in `transactions` table) to the GQueues API using idempotency keys.
+2. **Pull Phase:** Fetches remote metadata first, then pulls full task data for modified or stalest queues.
+
+### 4. Database Layer (`src/db.rs`)
+SQLite acts as the single source of truth for the UI. It maintains:
+- `queues`: Metadata and sync state for all folders/teams.
+- `tasks`: Full task details and hierarchical relationships.
+- `transactions`: An append-only log of local modifications awaiting sync.
+
 ## API Communication
+All communication with GQueues is handled by the `gqueues-api-rs` library.
 - **Base Endpoint:** `https://api.gqueues.com/v0`
-- **Authentication:** Bearer Token via `Authorization` header.
-- **Actions (Beta):**
-    - `getQueues`: (GET) Fetch queues. Optional query param `scope` (`personal`, `team`, `shared`).
-    - `getActiveTasks`: (GET) Fetch active tasks for a specific `queueKey`. Supports `limit`, `cursor`, `includeSnoozed`.
-    - `createTask`: (POST) Create tasks. Each instruction in `instructions` array can have `text`, `queueKey`, `notes`, `parseQuickAddSyntax`.
-- **Headers:**
-    - `Idempotency-Key`: Required for all POST operations.
-    - `Content-Type: application/json`: For POST operations.
-- **Note:** `updateTask` and `deleteTask` are not currently available in the public Beta API.
+- **Authentication:** Bearer Token.
+- **Rate Limiting:** `gqt` respects the `Retry-After` header and implements exponential backoff.
 
-## Architecture
-- **TUI Layer:** Handles rendering and user input via Ratatui (`src/ui.rs`).
-- **State Management:** A central state object managing the current view and task data (`src/app.rs`).
-- **GQueues API Module:** A decoupled module (`src/gqueues/`) containing the API client and models.
-- **Persistence Layer:** SQLite database using `rusqlite`, following **XDG best practices** (stored in `$XDG_DATA_HOME/gqt`).
-- **Sync Engine:** A background task using `tokio::select!` and exponential backoff to reconcile local and remote states.
-- **Robust Identity Mapping:** Uses internal UUIDs (`local_id`) for all database relationships to ensure data integrity for local-only tasks, with NULL-safe resolution for GQueues `remote_key` promotion.
-- **CRDT Strategy:** 
-    - Operations (Create, Update, Delete) are stored in a local **Transaction Log**.
-    - Each transaction has a timestamp and a unique ID.
-    - Local state is a projection of the transaction log.
-    - Sync engine attempts to push transactions to the API sequentially.
-    - Conflict resolution: Last Write Wins (LWW) based on client timestamps for now, until more complex CRDT needs arise.
+## Keyboard Controls
+GQueues TUI maintains high parity with the official web client shortcuts.
+- **Navigation:** `j`/`k`, `Tab`, `g`+`i` (Inbox).
+- **Expansion:** `Space` for categories and sub-tasks.
+- **Synchronization:** `s` for manual refresh.
+- **Help:** `?` for a dynamic binding reference.
 
-
-## Layout Components
-1. **Left Pane (Queues):** Categorized and collapsible navigation. Queues are grouped by API `categoryName` or `teamName`, with support for "Personal" and "Archive" sorting priorities.
-2. **Center Pane (Tasks):** Filtered list of tasks for the selected queue. Supports hierarchical sub-tasks.
-3. **Right Pane (Details):** Metadata, notes, and subtasks for the selected task. Includes rich formatting for tags and dates.
-4. **Help Modal:** An interactive overlay (`?`) displaying app metadata and dynamic keybindings.
+## Documentation References
+- [GQueues API Documentation](https://api.gqueues.com)
+- [gqueues-api-rs Repository](https://github.com/SyntaxAndScale/gqueues-api-rs)
+- [GQueues Shortcuts Reference](https://www.gqueues.com/help/shortcuts)

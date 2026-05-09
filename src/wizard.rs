@@ -6,18 +6,18 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
 use std::io;
 use std::path::PathBuf;
-use crate::config::{Settings, GqueuesConfig, save_config, KeybindingsConfig};
+use crate::config::{save_config, GqueuesConfig, KeybindingsConfig, Settings};
 use crate::db::Database;
 use gqueues_api_rs::GqueuesClient;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 enum WizardState {
     Welcome,
     InputApiKey,
@@ -87,7 +87,7 @@ pub async fn run(db_path: PathBuf) -> Result<Settings> {
             let mut display_text = content;
             if state == WizardState::InputApiKey {
                 display_text.push_str(&api_key);
-                display_text.push_str("█"); // Cursor
+                display_text.push('█'); // Cursor
             }
 
             let p = Paragraph::new(display_text).alignment(Alignment::Center);
@@ -116,14 +116,14 @@ pub async fn run(db_path: PathBuf) -> Result<Settings> {
                     for q in &queues {
                         let _ = db.upsert_queue(q);
                     }
-                    if let Some(inbox) = queues.iter().find(|q| q.is_inbox) {
-                        if let Ok(tasks) = client.get_tasks(&inbox.key).await {
-                            for mut t in tasks {
-                                t.queue_key = Some(inbox.key.clone());
-                                let _ = db.upsert_task(&t);
-                            }
-                            let _ = db.mark_tasks_fetched(&inbox.key);
+                    if let Some(inbox) = queues.iter().find(|q| q.is_inbox)
+                        && let Ok(tasks) = client.get_tasks(&inbox.key).await
+                    {
+                        for mut t in tasks {
+                            t.queue_key = Some(inbox.key.clone());
+                            let _ = db.upsert_task(&t);
                         }
+                        let _ = db.mark_tasks_fetched(&inbox.key);
                     }
                 }
                 Err(e) => {
@@ -148,40 +148,44 @@ pub async fn run(db_path: PathBuf) -> Result<Settings> {
             return Ok(settings);
         }
 
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Esc {
-                    disable_raw_mode()?;
-                    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                    std::process::exit(0);
-                }
+        if event::poll(std::time::Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            if key.code == KeyCode::Esc {
+                disable_raw_mode()?;
+                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+                std::process::exit(0);
+            }
 
-                match state {
-                    WizardState::Welcome => {
-                        state = WizardState::InputApiKey;
-                    }
-                    WizardState::InputApiKey => {
-                        match key.code {
-                            KeyCode::Enter => {
-                                if api_key.trim().is_empty() {
-                                    error = Some("API Key is required".to_string());
-                                } else {
-                                    error = None;
-                                    state = WizardState::Confirm;
-                                }
-                            }
-                            KeyCode::Char(c) => { error = None; api_key.push(c); }
-                            KeyCode::Backspace => { error = None; api_key.pop(); }
-                            _ => {}
-                        }
-                    }
-                    WizardState::Confirm => {
-                        if key.code == KeyCode::Enter {
-                            state = WizardState::Syncing;
-                        }
-                    }
-                    WizardState::Syncing => {}
+            match state {
+                WizardState::Welcome => {
+                    state = WizardState::InputApiKey;
                 }
+                WizardState::InputApiKey => match key.code {
+                    KeyCode::Enter => {
+                        if api_key.trim().is_empty() {
+                            error = Some("API Key is required".to_string());
+                        } else {
+                            error = None;
+                            state = WizardState::Confirm;
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        error = None;
+                        api_key.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        error = None;
+                        api_key.pop();
+                    }
+                    _ => {}
+                },
+                WizardState::Confirm => {
+                    if key.code == KeyCode::Enter {
+                        state = WizardState::Syncing;
+                    }
+                }
+                WizardState::Syncing => {}
             }
         }
     }

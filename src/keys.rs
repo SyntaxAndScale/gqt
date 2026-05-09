@@ -1,7 +1,7 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::collections::HashMap;
 use crate::actions::Action;
 use crate::config::KeybindingsConfig;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::collections::HashMap;
 
 pub struct KeyHandler {
     bindings: HashMap<String, Action>,
@@ -92,7 +92,7 @@ impl KeyHandler {
         self.current_sequence.push(key_str);
 
         let sequence_str = self.current_sequence.join(",");
-        
+
         // Check for exact match
         if let Some(action) = self.bindings.get(&sequence_str) {
             self.current_sequence.clear();
@@ -100,8 +100,11 @@ impl KeyHandler {
         }
 
         // Check if this is a prefix of any binding
-        let is_prefix = self.bindings.keys().any(|k| k.starts_with(&format!("{},", sequence_str)));
-        
+        let is_prefix = self
+            .bindings
+            .keys()
+            .any(|k| k.starts_with(&format!("{},", sequence_str)));
+
         if !is_prefix {
             // Not a match and not a prefix, clear sequence
             // But if the LAST key alone matches something, return that
@@ -123,7 +126,8 @@ impl KeyHandler {
         if event.modifiers.contains(KeyModifiers::ALT) {
             s.push_str("alt-");
         }
-        if event.modifiers.contains(KeyModifiers::SHIFT) && !matches!(event.code, KeyCode::Char(_)) {
+        if event.modifiers.contains(KeyModifiers::SHIFT) && !matches!(event.code, KeyCode::Char(_))
+        {
             s.push_str("shift-");
         }
 

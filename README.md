@@ -1,74 +1,66 @@
 # Gqueues TUI (gqt)
 
-A terminal-based user interface (TUI) for managing Gqueues tasks, built with Rust and Ratatui.
+A terminal user interface for managing GQueues tasks. Built with Rust and Ratatui.
+
+> **Disclaimer:** This is an unofficial project and is NOT commercially affiliated with GQueues. This software was developed with from Google Gemini CLI and has not been thoroughly reviewed for security or correctness. The software is considered a  prototype. Backup your data and use at your own risk.
 
 ## Features
 
-- **Three-Pane Layout:** Sidebar for Queues, Task List, and Detail View.
-- **Keyboard Centric:** Navigate and manage tasks entirely from the terminal.
-- **Real-time API Integration:** Communicates with the Gqueues Beta REST API.
-- **Async Execution:** Responsive UI with background data fetching.
+- **Offline-First:** All data is cached in a local SQLite database. Work anywhere, sync when online.
+- **Background Sync:** A dedicated engine reconciles local changes and fetches remote updates without blocking the UI.
+- **Three-Pane Layout:** Intuitive navigation between Queues, Tasks, and Task Details.
+- **Hierarchical Tasks:** Support for sub-tasks with collapsible/expandable nodes.
+- **Web-Parity Keyboard Shortcuts:** Familiar navigation for GQueues power users. Not all workflows implemented yet.
+- **Customizable:** Configurable keybindings
 
-## Navigation
+## Installation
+Requires Rust. 
 
-- `Tab` / `Shift-Tab`: Switch focus between panes (Queues, Tasks, Details).
-- `j`, `k` / `Up`, `Down`: Navigate through lists.
-- `Enter`: Select Queue / Toggle Category expansion.
-- `Space`: Toggle Category / Toggle Subtasks.
-- `q`: Quick Add task.
-- `r`, `s`: Manual Sync.
-- `g` then `i`: Go to Inbox.
-- `Ctrl-c`: Quit the application.
+```bash
+# Clone the repository
+git clone https://github.com/SyntaxAndScale/gqt
+cd gqt
 
-## Configuration
-
-Gqueues TUI follows XDG best practices. Your configuration is stored at `~/.config/gqt/config.toml`.
-
-### Keybindings
-You can customize any keyboard shortcut by editing the `[keybindings.bindings]` section in your `config.toml`. The application automatically populates this file with GQueues web-compatible defaults on the first run.
-
-Example `config.toml`:
-```toml
-[keybindings.bindings]
-quit = "ctrl-q"
-sync = "s"
-move_up = "k"
-move_down = "j"
+# Build and run
+cargo run --release
 ```
 
 ## Setup
-...
-1. Ensure you have Rust and Cargo installed.
-2. Configure your Gqueues credentials in `.gemini/settings.local.json`:
-   ```json
-   {
-     "gqueues": {
-       "apiEndpoint": "https://api.gqueues.com",
-       "accessToken": "your_access_token_here"
-     }
-   }
-   ```
-3. Run the application:
-   ```bash
-   cargo run
-   ```
 
-## Development
+On the first launch, `gqt` will guide you through an interactive setup wizard:
+1. **API Key:** You will be prompted to enter your GQueues API Key (available in your account settings).
+2. **Initial Sync:** The application will immediately fetch your queue names and your Inbox tasks so you can get started instantly.
 
-This project is currently a prototype. Future plans include:
-- CRUD operations (Create, Update, Delete).
-- Offline-first caching with CRDT-based synchronization.
-- Enhanced keyboard shortcuts and vim-like navigation.
+## Default Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `?` | Show Help Modal (Dynamic Reference) |
+| `Tab` | Cycle through panes |
+| `j` / `k` | Navigate lists |
+| `Space` | Toggle Category / Sub-task expansion |
+| `s` | Sync Now (Manual Trigger) |
+| `g` then `i` | Go to Inbox |
+| `Esc` | Cancel / Close Modal |
+| `Ctrl-c` | Quit |
+
+## Roadmap
+- [ ] Task Creation
+- [ ] Task Completion (`c`) and Archiving (`Shift-C`).
+- [ ] Task Deletion.
+- [ ] Task Editing.
+- [ ] Rich TUI rendering (mapping GQueues formatting to TUI styles).
+
+## Someday / Maybe
+- [ ] Command palette 
+- [ ] Command-line CRUD and sync commands
+- [ ] Custom Themes
+- [ ] Database path configuration
+- [ ] Extensions / Plug-ins for custom workflows
+
+## Contributing
 
 ## License
 
-Copyright (c) 2026 Syntax & Scale, LLC. All rights reserved.
+*License choice pending.*
 
-This software and its associated documentation are the proprietary property 
-of Syntax & Scale, LLC. 
-
-Unauthorized copying, distribution, or modification of this software, 
-via any medium, is strictly prohibited. 
-
-For inquiries regarding commercial licensing or acquisition, please contact 
-contact@syntaxandscale.com .

@@ -1,9 +1,9 @@
+use anyhow::{Result, anyhow};
+use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::{anyhow, Result};
-use directories::ProjectDirs;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct GqueuesConfig {
@@ -116,27 +116,28 @@ pub struct Settings {
 
 pub fn load_config() -> Result<Option<Settings>> {
     let toml_path = get_config_path("config.toml")?;
-    
+
     if !toml_path.exists() {
         return Ok(None);
     }
 
     let content = fs::read_to_string(&toml_path)?;
     let mut settings = toml::from_str::<Settings>(&content)?;
-    
+
     // Ensure all default keybindings are present
     let defaults = KeybindingsConfig::default();
     let mut modified = false;
     for (action, key) in defaults.bindings {
-        if !settings.keybindings.bindings.contains_key(&action) {
-            settings.keybindings.bindings.insert(action, key);
+        if let std::collections::hash_map::Entry::Vacant(e) = settings.keybindings.bindings.entry(action) {
+            e.insert(key);
             modified = true;
         }
     }
+
     if modified {
         save_config(&settings)?;
     }
-    
+
     Ok(Some(settings))
 }
 
@@ -155,4 +156,32 @@ pub fn get_config_path(filename: &str) -> Result<PathBuf> {
         fs::create_dir_all(config_dir)?;
     }
     Ok(config_dir.join(filename))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_keybindings() {
+        let defaults = KeybindingsConfig::default();
+        assert_eq!(defaults.bindings.get("quit").unwrap(), "ctrl-c");
+        assert_eq!(defaults.bindings.get("sync").unwrap(), "r");
+        assert_eq!(defaults.bindings.get("help").unwrap(), "?");
+    }
+
+    #[test]
+    fn test_settings_serialization() {
+        let settings = Settings {
+            gqueues: GqueuesConfig {
+                api_endpoint: Some("https://api.test.com".to_string()),
+                access_token: Some("secret".to_string()),
+            },
+            keybindings: KeybindingsConfig::default(),
+            database_path: None,
+        };
+        let toml = toml::to_string(&settings).unwrap();
+        assert!(toml.contains("apiEndpoint = \"https://api.test.com\""));
+        assert!(toml.contains("accessToken = \"secret\""));
+    }
 }

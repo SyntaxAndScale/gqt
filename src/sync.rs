@@ -1,25 +1,32 @@
+use crate::db::Database;
+use crate::models::Operation;
+use anyhow::{anyhow, Result};
+use chrono::Utc;
+use gqueues_api_rs::Queue;
+use gqueues_api_rs::GqueuesClient;
+use gqueues_api_rs::client::GqueuesError;
+use rusqlite::OptionalExtension;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
-use anyhow::{Result, anyhow};
-use crate::db::Database;
-use gqueues_api_rs::GqueuesClient;
-use gqueues_api_rs::client::GqueuesError;
-use gqueues_api_rs::Queue;
-use crate::models::Operation;
-use rusqlite::OptionalExtension;
-use chrono::Utc;
 
+/// Events emitted by the SyncEngine to the main TUI loop.
 pub enum SyncEvent {
+    /// Indicates an operation is currently in progress with a descriptive message.
     InProgress { message: String },
+    /// Indicates a full sync cycle has finished, providing progress statistics.
     Complete { unfetched: usize, total: usize },
+    /// Indicates a non-fatal error occurred during synchronization.
     Error(String),
 }
 
+/// Commands sent from the TUI to the background SyncEngine.
 pub enum SyncCommand {
+    /// Triggers an immediate synchronization cycle, bypassing the periodic timer.
     ForceSync,
 }
 
+/// The background task responsible for reconciling local state with the GQueues API.
 pub struct SyncEngine {
     client: Arc<GqueuesClient>,
     db: Arc<Mutex<Database>>,
@@ -29,6 +36,7 @@ pub struct SyncEngine {
 }
 
 impl SyncEngine {
+    /// Creates a new SyncEngine instance.
     pub fn new(
         client: Arc<GqueuesClient>,
         db: Arc<Mutex<Database>>,
@@ -36,9 +44,16 @@ impl SyncEngine {
         tx: mpsc::Sender<SyncEvent>,
         cmd_rx: mpsc::Receiver<SyncCommand>,
     ) -> Self {
-        Self { client, db, active_queue_key, tx, cmd_rx }
+        Self {
+            client,
+            db,
+            active_queue_key,
+            tx,
+            cmd_rx,
+        }
     }
 
+    /// The main execution loop for the background sync task.
     pub async fn run(&mut self) {
         let mut retry_count = 0;
         let mut interval = Duration::from_secs(1); // Start first cycle almost immediately
@@ -69,14 +84,30 @@ impl SyncEngine {
         }
     }
 
+    /// Handles a single synchronization cycle, including push and pull phases.
     async fn handle_sync_cycle(&self, retry_count: &mut u32) -> Duration {
-        let _ = self.tx.send(SyncEvent::InProgress { message: "⏳ Sync in progress...".into() }).await;
+        let _ = self
+            .tx
+            .send(SyncEvent::InProgress {
+                message: "⏳ Sync in progress...".into(),
+            })
+            .await;
         match self.sync_cycle().await {
             Ok(stats) => {
                 *retry_count = 0;
-                log::info!("Sync cycle completed successfully: {}/{} remaining", stats.0, stats.1);
-                let _ = self.tx.send(SyncEvent::Complete { unfetched: stats.0, total: stats.1 }).await;
-                
+                log::info!(
+                    "Sync cycle completed successfully: {}/{} remaining",
+                    stats.0,
+                    stats.1
+                );
+                let _ = self
+                    .tx
+                    .send(SyncEvent::Complete {
+                        unfetched: stats.0,
+                        total: stats.1,
+                    })
+                    .await;
+
                 // If we still have unfetched queues, run again sooner
                 if stats.0 > 0 {
                     Duration::from_secs(5)
@@ -89,22 +120,34 @@ impl SyncEngine {
                     match gq_err {
                         GqueuesError::RateLimited(dur) => {
                             log::warn!("Rate limited. Waiting for {:?}", dur);
-                            let _ = self.tx.send(SyncEvent::Error(format!("Rate limited. Waiting {:?}...", dur))).await;
+                            let _ = self
+                                .tx
+                                .send(SyncEvent::Error(format!(
+                                    "Rate limited. Waiting {:?}...",
+                                    dur
+                                )))
+                                .await;
                             *dur
                         }
                         _ => {
                             *retry_count += 1;
                             log::error!("Sync cycle failed: {}", e);
-                            let backoff = Duration::from_secs(2u64.pow(*retry_count).min(60).max(5));
-                            let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                            let backoff = Duration::from_secs(2u64.pow(*retry_count).clamp(5, 60));
+                            let _ = self
+                                .tx
+                                .send(SyncEvent::Error(format!("Sync error: {}", e)))
+                                .await;
                             backoff
                         }
                     }
                 } else {
                     *retry_count += 1;
                     log::error!("Sync cycle failed with non-Gqueues error: {}", e);
-                    let backoff = Duration::from_secs(2u64.pow(*retry_count).min(60).max(5));
-                    let _ = self.tx.send(SyncEvent::Error(format!("Sync error: {}", e))).await;
+                    let backoff = Duration::from_secs(2u64.pow(*retry_count).clamp(5, 60));
+                    let _ = self
+                        .tx
+                        .send(SyncEvent::Error(format!("Sync error: {}", e)))
+                        .await;
                     backoff
                 }
             }
@@ -114,7 +157,7 @@ impl SyncEngine {
     async fn sync_cycle(&self) -> Result<(usize, usize)> {
         self.push_pending_changes().await?;
         self.pull_remote_changes().await?;
-        
+
         let (unfetched, total) = {
             let db = self.db.lock().unwrap();
             let unfetched = db.get_unfetched_queues_count()?;
@@ -124,6 +167,7 @@ impl SyncEngine {
         Ok((unfetched, total))
     }
 
+    /// Pushes local transactions to the remote GQueues API.
     async fn push_pending_changes(&self) -> Result<()> {
         let pending = {
             let db = self.db.lock().unwrap();
@@ -132,78 +176,103 @@ impl SyncEngine {
 
         for (tx_id, op_json, idem_key) in pending {
             let operation: Operation = serde_json::from_str(&op_json)?;
-            
-            match operation {
-                Operation::CreateTask(task) => {
-                    let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", task.title) }).await;
-                    log::info!("Sync Engine: Promoting local task '{}' (Local Key: {}) to GQueues", task.title, task.key);
-                    match self.client.create_task_with_idempotency(
+
+            if let Operation::Create(task) = operation {
+                let _ = self
+                    .tx
+                    .send(SyncEvent::InProgress {
+                        message: format!("⏳ Syncing: {}", task.title),
+                    })
+                    .await;
+                log::info!(
+                    "Sync Engine: Promoting local task '{}' (Local Key: {}) to GQueues",
+                    task.title,
+                    task.key
+                );
+                match self
+                    .client
+                    .create_task_with_idempotency(
                         &task.title,
                         task.queue_key.as_deref(),
                         task.notes.as_deref(),
-                        &idem_key
-                    ).await {
-                        Ok(remote_task) => {
-                            log::info!("Sync Engine: Successfully promoted '{}'. New Remote Key: {}", task.title, remote_task.key);
-                            let db = self.db.lock().unwrap();
-                            db.update_task_remote_key(&task.key, &remote_task.key)?;
-                            db.mark_transaction_synced(&tx_id)?;
-                        }
-                        Err(e) => {
-                            log::error!("Sync Engine: Failed to promote task '{}': {}", task.title, e);
-                            return Err(anyhow!(e));
-                        }
+                        &idem_key,
+                    )
+                    .await
+                {
+                    Ok(remote_task) => {
+                        log::info!(
+                            "Sync Engine: Successfully promoted '{}'. New Remote Key: {}",
+                            task.title,
+                            remote_task.key
+                        );
+                        let db = self.db.lock().unwrap();
+                        db.update_task_remote_key(&task.key, &remote_task.key)?;
+                        db.mark_transaction_synced(&tx_id)?;
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "Sync Engine: Failed to promote task '{}': {}",
+                            task.title,
+                            e
+                        );
+                        return Err(anyhow!(e));
                     }
                 }
-                _ => {}
             }
         }
         Ok(())
     }
 
+    /// Pulls remote changes from the API and reconciles them with the local database.
     async fn pull_remote_changes(&self) -> Result<()> {
-        // 1. Fetch current queue metadata from API
-        let _ = self.tx.send(SyncEvent::InProgress { message: "⏳ Fetching queue metadata...".into() }).await;
-        let api_queues = self.client.get_queues().await
-            .map_err(|e| anyhow!(e))?;
-        
+        let _ = self
+            .tx
+            .send(SyncEvent::InProgress {
+                message: "⏳ Fetching queue metadata...".into(),
+            })
+            .await;
+        let api_queues = self.client.get_queues().await.map_err(|e| anyhow!(e))?;
+
         let active_key = {
             let active = self.active_queue_key.lock().unwrap();
             active.clone()
         };
 
-        // 2. Identify which queues actually need a task pull
         let mut modified_queues = Vec::new();
         {
             let db = self.db.lock().unwrap();
             for api_q in api_queues {
                 let local_modified = db.get_queue_last_modified(&api_q.key)?;
                 let needs_fetch = {
-                    let mut stmt = db.conn.prepare("SELECT tasks_fetched FROM queues WHERE remote_key = ?1")?;
-                    let fetched: Option<i32> = stmt.query_row([&api_q.key], |row| row.get(0)).optional()?;
+                    let mut stmt = db
+                        .conn
+                        .prepare("SELECT tasks_fetched FROM queues WHERE remote_key = ?1")?;
+                    let fetched: Option<i32> =
+                        stmt.query_row([&api_q.key], |row| row.get(0)).optional()?;
                     fetched != Some(1)
                 };
 
                 if needs_fetch || local_modified.as_deref() != api_q.last_modified.as_deref() {
                     modified_queues.push(api_q.clone());
                 }
-                
-                // Update metadata (name, is_inbox, etc.) but NOT the last_modified sync point
+
                 db.upsert_queue(&api_q)?;
             }
         }
 
-        // 3. Sync modified queues (prioritize active)
         if let Some(ref ak) = active_key {
             modified_queues.sort_by(|a, b| {
-                if &a.key == ak { std::cmp::Ordering::Less }
-                else if &b.key == ak { std::cmp::Ordering::Greater }
-                else { std::cmp::Ordering::Equal }
+                if &a.key == ak {
+                    std::cmp::Ordering::Less
+                } else if &b.key == ak {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
             });
         }
 
         if modified_queues.is_empty() {
-            // Background check on the stalest queue if nothing else is modified
             let stale_queue = {
                 let db = self.db.lock().unwrap();
                 let mut stmt = db.conn.prepare(
@@ -211,24 +280,35 @@ impl SyncEngine {
                      FROM queues 
                      ORDER BY last_synced_at ASC LIMIT 1"
                 )?;
-                stmt.query_row([], |row| Ok(Queue {
-                    key: row.get(0)?,
-                    name: row.get(1)?,
-                    is_inbox: row.get::<_, i32>(2)? != 0,
-                    last_modified: row.get(3)?,
-                    category: row.get(4)?,
-                    category_name: row.get(5)?,
-                    team_name: row.get(6)?,
-                    scope: row.get(7)?,
-                })).optional()?
+                stmt.query_row([], |row| {
+                    Ok(Queue {
+                        key: row.get(0)?,
+                        name: row.get(1)?,
+                        is_inbox: row.get::<_, i32>(2)? != 0,
+                        last_modified: row.get(3)?,
+                        category: row.get(4)?,
+                        category_name: row.get(5)?,
+                        team_name: row.get(6)?,
+                        scope: row.get(7)?,
+                    })
+                })
+                .optional()?
             };
 
             if let Some(q) = stale_queue {
-                let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", q.name) }).await;
+                let _ = self
+                    .tx
+                    .send(SyncEvent::InProgress {
+                        message: format!("⏳ Syncing: {}", q.name),
+                    })
+                    .await;
                 log::debug!("Background Sync: Checking stale queue: {}", q.name);
-                let tasks = self.client.get_tasks(&q.key).await
+                let tasks = self
+                    .client
+                    .get_tasks(&q.key)
+                    .await
                     .map_err(|e| anyhow!(e))?;
-                
+
                 let db = self.db.lock().unwrap();
                 for mut t in tasks {
                     t.queue_key = Some(q.key.clone());
@@ -239,18 +319,33 @@ impl SyncEngine {
             }
         } else {
             for queue in modified_queues {
-                let _ = self.tx.send(SyncEvent::InProgress { message: format!("⏳ Syncing: {}", queue.name) }).await;
-                log::info!("Syncing tasks for queue: {} (Key: {})", queue.name, queue.key);
-                let tasks = self.client.get_tasks(&queue.key).await
+                let _ = self
+                    .tx
+                    .send(SyncEvent::InProgress {
+                        message: format!("⏳ Syncing: {}", queue.name),
+                    })
+                    .await;
+                log::info!(
+                    "Syncing tasks for queue: {} (Key: {})",
+                    queue.name,
+                    queue.key
+                );
+                let tasks = self
+                    .client
+                    .get_tasks(&queue.key)
+                    .await
                     .map_err(|e| anyhow!(e))?;
-                
+
                 {
                     let db = self.db.lock().unwrap();
                     for mut t in tasks {
                         t.queue_key = Some(queue.key.clone());
                         db.upsert_task(&t)?;
                     }
-                    db.update_queue_sync_point(&queue.key, queue.last_modified.as_deref().unwrap_or(""))?;
+                    db.update_queue_sync_point(
+                        &queue.key,
+                        queue.last_modified.as_deref().unwrap_or(""),
+                    )?;
                 }
                 sleep(Duration::from_millis(500)).await;
             }

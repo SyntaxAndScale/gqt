@@ -4,15 +4,17 @@ use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 use std::path::PathBuf;
 
-use gqueues_api_rs::models::{Queue, Task};
 use chrono::Utc;
+use gqueues_api_rs::models::{Queue, Task};
 use uuid::Uuid;
 
+/// Manages local SQLite persistence and synchronization state.
 pub struct Database {
     pub conn: Connection,
 }
 
 impl Database {
+    /// Connects to a SQLite database at the specified path and initializes the schema.
     pub fn new(path: PathBuf) -> Result<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -24,6 +26,7 @@ impl Database {
         Ok(db)
     }
 
+    /// Resolves the default XDG path for the gqt database.
     pub fn get_default_db_path() -> Result<PathBuf> {
         let proj_dirs = ProjectDirs::from("com", "gqt", "gqt")
             .ok_or_else(|| anyhow!("Could not determine project directories"))?;
@@ -83,6 +86,7 @@ impl Database {
         Ok(())
     }
 
+    /// Upserts a queue into the local database.
     pub fn upsert_queue(&self, queue: &Queue) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
@@ -100,18 +104,19 @@ impl Database {
                 &queue.key,
                 &queue.name,
                 if queue.is_inbox { 1 } else { 0 },
-                "", // last_modified is initialized empty on new insert
+                "", 
                 &now,
                 queue.category.as_deref(),
                 queue.category_name.as_deref(),
                 queue.team_name.as_deref(),
                 queue.scope.as_deref(),
-                0, // tasks_fetched defaults to 0 on new insert
+                0,
             ),
         )?;
         Ok(())
     }
 
+    /// Updates the local sync point for a queue after a successful task pull.
     pub fn update_queue_sync_point(&self, queue_key: &str, server_timestamp: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
@@ -121,6 +126,7 @@ impl Database {
         Ok(())
     }
 
+    /// Retrieves all queues from the local database.
     pub fn get_queues(&self) -> Result<Vec<Queue>> {
         let mut stmt = self.conn.prepare("SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope FROM queues")?;
         let rows = stmt.query_map([], |row| {
@@ -143,6 +149,7 @@ impl Database {
         Ok(queues)
     }
 
+    /// Marks a queue as needing a full task fetch.
     pub fn mark_queue_unfetched(&self, queue_key: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE queues SET last_modified = '', tasks_fetched = 0 WHERE remote_key = ?1",
@@ -151,6 +158,7 @@ impl Database {
         Ok(())
     }
 
+    /// Marks a queue's tasks as having been successfully fetched at least once.
     pub fn mark_tasks_fetched(&self, queue_key: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE queues SET tasks_fetched = 1 WHERE remote_key = ?1",
@@ -159,6 +167,7 @@ impl Database {
         Ok(())
     }
 
+    /// Returns the number of queues that have never been synchronized.
     pub fn get_unfetched_queues_count(&self) -> Result<usize> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM queues WHERE tasks_fetched = 0",
@@ -168,43 +177,15 @@ impl Database {
         Ok(count as usize)
     }
 
+    /// Returns the total number of queues in the database.
     pub fn get_total_queues_count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM queues",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM queues", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
-    pub fn get_next_unfetched_queue(&self) -> Result<Option<Queue>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT remote_key, name, is_inbox, last_modified, category, category_name, team_name, scope 
-             FROM queues 
-             WHERE tasks_fetched = 0 
-             ORDER BY is_inbox DESC, last_synced_at ASC 
-             LIMIT 1"
-        )?;
-        let mut rows = stmt.query_map([], |row| {
-            Ok(Queue {
-                key: row.get(0)?,
-                name: row.get(1)?,
-                is_inbox: row.get::<_, i32>(2)? != 0,
-                last_modified: row.get(3)?,
-                category: row.get(4)?,
-                category_name: row.get(5)?,
-                team_name: row.get(6)?,
-                scope: row.get(7)?,
-            })
-        })?;
-
-        if let Some(queue) = rows.next() {
-            Ok(Some(queue?))
-        } else {
-            Ok(None)
-        }
-    }
-
+    /// Upserts a task and its sub-tasks recursively.
     pub fn upsert_task(&self, task: &Task) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let tags_json = serde_json::to_string(&task.tags)?;
@@ -249,15 +230,17 @@ impl Database {
         )?;
 
         if let Some(ref items) = task.subitems {
-            for mut sub in items.clone() {
-                sub.queue_key = task.queue_key.clone();
-                sub.parent_key = Some(task.key.clone());
-                self.upsert_task(&sub)?;
+            for sub in items {
+                let mut sub_clone = sub.clone();
+                sub_clone.queue_key = task.queue_key.clone();
+                sub_clone.parent_key = Some(task.key.clone());
+                self.upsert_task(&sub_clone)?;
             }
         }
         Ok(())
     }
 
+    /// Retrieves all tasks for a specific queue, including their hierarchical context.
     pub fn get_tasks(&self, queue_key: &str) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
             "SELECT 
@@ -289,7 +272,8 @@ impl Database {
                 assignments: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or(None),
                 creation_date: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or(None),
                 due_date: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(None),
-                repeats: serde_json::from_str(&row.get::<_, String>(10)?).unwrap_or(serde_json::Value::Bool(false)),
+                repeats: serde_json::from_str(&row.get::<_, String>(10)?)
+                    .unwrap_or(serde_json::Value::Bool(false)),
             })
         })?;
 
@@ -300,9 +284,9 @@ impl Database {
         Ok(tasks)
     }
 
+    /// Saves a task locally and logs a pending transaction for the Sync Engine.
     pub fn add_task_local(&self, mut task: Task) -> Result<Task> {
         let local_id = Uuid::new_v4().to_string();
-        // For local tasks, we set a placeholder key that UI recognizes as pending
         task.key = format!("local-{}", local_id);
         let now = Utc::now().to_rfc3339();
         let tags_json = serde_json::to_string(&task.tags)?;
@@ -334,10 +318,9 @@ impl Database {
             ),
         )?;
 
-        // Log transaction
         let transaction_id = Uuid::new_v4().to_string();
         let idempotency_key = Uuid::new_v4().to_string();
-        let operation = serde_json::to_string(&crate::models::Operation::CreateTask(task.clone()))?;
+        let operation = serde_json::to_string(&crate::models::Operation::Create(task.clone()))?;
         self.conn.execute(
             "INSERT INTO transactions (id, operation, timestamp, sync_status, idempotency_key)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -353,13 +336,12 @@ impl Database {
         Ok(task)
     }
 
+    /// Retrieves all pending transactions to be pushed to the remote API.
     pub fn get_pending_transactions(&self) -> Result<Vec<(String, String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, operation, idempotency_key FROM transactions WHERE sync_status = 'pending' ORDER BY timestamp ASC"
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
 
         let mut txs = Vec::new();
         for tx in rows {
@@ -368,21 +350,16 @@ impl Database {
         Ok(txs)
     }
 
-    pub fn update_queue_sync_time(&self, queue_key: &str) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
-        self.conn.execute(
-            "UPDATE queues SET last_synced_at = ?1 WHERE remote_key = ?2",
-            [now, queue_key.to_string()],
-        )?;
-        Ok(())
-    }
-
+    /// Returns the last modified timestamp for a queue stored in the local database.
     pub fn get_queue_last_modified(&self, queue_key: &str) -> Result<Option<String>> {
-        let mut stmt = self.conn.prepare("SELECT last_modified FROM queues WHERE remote_key = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT last_modified FROM queues WHERE remote_key = ?1")?;
         let res = stmt.query_row([queue_key], |row| row.get(0)).optional()?;
         Ok(res)
     }
 
+    /// Marks a transaction as successfully reconciled with the remote API.
     pub fn mark_transaction_synced(&self, id: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE transactions SET sync_status = 'synced' WHERE id = ?1",
@@ -391,6 +368,7 @@ impl Database {
         Ok(())
     }
 
+    /// Updates a task's remote key after it has been promoted from a local item.
     pub fn update_task_remote_key(&self, local_key: &str, remote_key: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE tasks SET remote_key = ?1 WHERE remote_key = ?2",

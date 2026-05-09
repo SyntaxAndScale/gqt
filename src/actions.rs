@@ -30,7 +30,7 @@ pub enum Action {
     EditDate,
     AssignTask,
     WriteComment,
-    ToggleCompleted, // 'c'
+    ToggleCompleted,    // 'c'
     CompleteAndArchive, // 'Shift-C'
     DeleteTask,
     SnoozeTask,
