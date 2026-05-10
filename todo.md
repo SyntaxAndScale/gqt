@@ -63,6 +63,42 @@
 - [x] Re-design and update formatting of task details
 - [ ] Re-design and update the formatting of the help screen '?'
 - [ ] When first loading gqt, the tasks from the Inbox queue are shown in the center pane (correctly) but the navigation pane should also have the Inbox queue selected. Currently it shows the Category being selected. It should expand the necessary Category (if applicable) and show the Inbox queue selected.
+- [ ] Consider encrypting the local database
+- [ ] BUG: Enable shift+tab to navigate between panes
+- [ ] Feature: Implement keyboard shortcuts to hide/show left and right panes
+- [ ] Feature: Implement command and keyboard shortcut to 'maximize' the task detail pane.
+- [ ] BUG: When initially loading, gqt correctly shows the task list of the Inbox, but the left pane doesn't show the Inbox queue highlighted. It should. Which means that the collapsed state of the Inbox's Category must be expanded and the Inbox highlighted.
+- [ ] Feature: Task Creation using Quick Task modal. This should match the functionality and layout (but not necessairly the presentation) of Gqueues's Web Quick Task Entry as close as reasonably possible. Gqueues Quick Task Modal's help page is here: https://learn.gqueues.com/en/articles/5305392-add-tasks-quicker-using-quick-add#h_961e305883 and as an example, the web form's element looks like this when 'q' is pressed whlie within the "# Home Maintenance and Projects (shared)" queue: <div class="gq-dialog-content-container">
+        <div class="gq-dialog-title-bar">
+            <div translate="no" class="gq-dialog-drag-icon material-icons">drag_indicator</div>
+            <div class="gq-dialog-title">
+                
+                    Quick Add
+                
+            </div>
+        </div>
+
+        <div class="gq-dialog-processing gq-hidden"><div class="gq-progress-circle"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+</div></div>
+
+        <div class="gq-dialog-content">
+            
+            <div class="gq-dialog-error gq-hidden"></div>
+
+            <div id="gqQuickAddSelectedQueue" class="gq-queue-filter-btn"><div class="gq-qf-row-wrapper gq-queue-bkgnd-9"><div class="gq-queue-handle"></div><div class="gq-qf-name-wrapper"><div class="gq-qf-secondary-name">Shared w/ Yen</div><div class="gq-qf-primary-name"># Home Maintenance and Projects (shared)</div></div></div></div>
+
+            <div id="gqQuickTasksLabel" class="gq-quick-task">Enter one task per line</div>
+            <textarea id="gqQuickTasks"></textarea>
+            <div class="gq-quick-notes"><strong>options:</strong> on date @ time, #tag, [queue name], ^reminder, -subtask, +email, :: notes</div>
+            <div class="gq-quick-notes">shift-enter to save</div>
+            <div class="gq-dialog-button-container">
+                <button id="gqQuickSaveBtn" class="gq-button-contained">Create tasks</button>
+                <button id="gqQuickCancelBtn" class="gq-button-text">Cancel</button>
+                <div class="gq-spacer"></div>
+                <a class="gq-icon-button" href="https://learn.gqueues.com/articles/5305392-add-tasks-quicker-using-quick-add#h_961e305883" target="_blank" aria-label="Help"><span translate="no" class="material-icons-outlined md-medium-dark">help_outline</span></a>
+            </div>
+        </div>
+    </div>
 
 ## TODO Before Open Sourcing
 - [ ] Choose and apply a license based on what is legally viable by what the imported crates use
