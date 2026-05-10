@@ -34,3 +34,20 @@
 
 ## 2026-05-08
 - **Library Extraction:** Successfully externalized the GQueues API client into the standalone `gqueues-api-rs` crate, hosted on GitHub.
+
+## 2026-05-10
+- **Task Detail Redesign:** Overhauled the right pane for professional metadata display.
+    - Implemented fixed-width alignment for the metadata line (Created, Repeat, Due, Assignee).
+    - Added clickable GQueues web links for synced tasks.
+    - Standardized date formatting: YYYY-MM-DD for creation and "Mmm d" for due dates.
+    - Implemented a blockquote style for task notes (later removed for cleaner look).
+    - Added placeholders for future Comments and Activity API features.
+- **UI Bug Fixes & Refinements:**
+    - **Date Formatting:** Fixed `creation_date` parsing to handle multiple formats and strictly show `YYYY-MM-DD`.
+    - **Tag Rendering:** Removed background highlight from the space between tags for a cleaner look.
+    - **Note Formatting:** Removed the `> ` prefix from task notes.
+    - **Status Bar:** Reformatted "Last Synced" timestamp to fit perfectly within the status bar and use the local timezone.
+    - **Task List Hierarchy:** Fixed a bug where collapsible arrows (▶/▼) were missing for tasks with subtasks when loaded from the local database.
+    - **Due Date Coloring:** Implemented color-coding for the due date in the Details pane—**Green** for tasks due today or in the future, and **Red** for overdue tasks.
+    - **Repeating Tasks:** Improved detection logic for the 🔁 emoji to support all recurrence formats and added a fallback for emojis present in the task title.
+- **Versioning:** Incremented version to `0.1.26`.

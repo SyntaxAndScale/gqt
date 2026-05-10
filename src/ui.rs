@@ -67,7 +67,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .iter()
         .map(|(task, depth)| {
             let indent = " ".repeat(*depth);
-            let has_subtasks = task.subitems.as_ref().is_some_and(|s| !s.is_empty());
+            
+            // Check if task has subtasks by looking for any task with this task as parent
+            let has_subtasks = app.tasks.iter().any(|t| t.parent_key.as_ref() == Some(&task.key));
+            
             let expand_icon = if has_subtasks {
                 if app.expanded_tasks.contains(&task.key) {
                     "▼"
@@ -84,14 +87,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 ""
             };
 
-            ListItem::new(format!(
-                "{}{} {} {}{}",
-                indent,
-                expand_icon,
-                status_icon,
-                clean_html(&task.title),
-                unsynced_icon
-            ))
+            ListItem::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw(format!("{}{} {} ", indent, expand_icon, status_icon)),
+                ratatui::text::Span::raw(clean_html(&task.title)),
+                ratatui::text::Span::raw(unsynced_icon),
+            ]))
         })
         .collect();
 
@@ -113,86 +113,124 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     let mut details_text = Vec::new();
     if let Some(task) = app.selected_task() {
-        // 1. Tags
+        // 1. Title (Bright White / Bold)
+        details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+            clean_html(&task.title),
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Rgb(255, 255, 255)),
+        )));
+
+        // 2. Metadata Line: {Created}  {🔁/   }{Mmm d}  {👤 Assignee}
+        let mut meta_spans = Vec::new();
+
+        // Created Date (YYYY-MM-DD) - Fixed 10 chars
+        let created_str = if let Some(ref cd) = task.creation_date {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&cd.raw) {
+                dt.format("%Y-%m-%d").to_string()
+            } else if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&cd.raw, "%Y-%m-%d %H:%M") {
+                dt.format("%Y-%m-%d").to_string()
+            } else {
+                cd.raw.split(' ').next().unwrap_or(&cd.raw).chars().take(10).collect()
+            }
+        } else {
+            "          ".to_string()
+        };
+        meta_spans.push(ratatui::text::Span::raw(format!("{: <10}", created_str)));
+        meta_spans.push(ratatui::text::Span::raw(" ")); // Spacing
+
+        // Repeat icon (3 chars: "🔁 " or "   ")
+        let is_repeating = (!task.repeats.is_null() && 
+            (task.repeats.is_object() || 
+             task.repeats.as_bool().unwrap_or(false) || 
+             (task.repeats.is_string() && !task.repeats.as_str().unwrap_or("").is_empty())))
+            || task.title.contains('🔁');
+
+        if is_repeating {
+            meta_spans.push(ratatui::text::Span::styled("🔁 ", Style::default().fg(Color::Green)));
+        } else {
+            meta_spans.push(ratatui::text::Span::raw("   "));
+        }
+
+        // Due Date (Fixed 8 chars)
+        let (due_str, due_style) = if let Some(ref dd) = task.due_date
+            && let Some(ref rd) = dd.raw_date
+        {
+            let (s, style) = if let Ok(due_date) = chrono::NaiveDate::parse_from_str(rd, "%Y-%m-%d") {
+                let today = chrono::Local::now().date_naive();
+                let color = if due_date < today {
+                    Color::Red
+                } else {
+                    Color::Green
+                };
+                (format!("{: <8}", due_date.format("%b %e")), Style::default().fg(color))
+            } else {
+                (format!("{: <8}", rd), Style::default().fg(Color::Magenta))
+            };
+            (s, style)
+        } else {
+            ("        ".to_string(), Style::default())
+        };
+        meta_spans.push(ratatui::text::Span::styled(due_str, due_style));
+        meta_spans.push(ratatui::text::Span::raw("  ")); // Spacing
+
+        // Assignee
+        if let Some(ref assignments) = task.assignments
+            && !assignments.is_empty()
+        {
+            let assignee_names: Vec<String> = assignments.iter().map(|a| a.name.clone()).collect();
+            meta_spans.push(ratatui::text::Span::raw("👤"));
+            meta_spans.push(ratatui::text::Span::raw(assignee_names.join(", ")));
+        }
+
+        details_text.push(ratatui::text::Line::from(meta_spans));
+
+        // 3. Task Link (Only for synced tasks)
+        if !task.key.starts_with("local-") && !task.key.is_empty() {
+            let url = format!("https://www.gqueues.com/main#task/{}", task.key);
+            details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+                url,
+                Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED),
+            )));
+        }
+        details_text.push(ratatui::text::Line::from(""));
+
+        // 4. Tags: 🏷️{Tag1} 🏷️{Tag2}
         if let Some(ref tags) = task.tags
             && !tags.is_empty()
         {
             let mut tag_spans = Vec::new();
-            for tag in tags {
+            for (i, tag) in tags.iter().enumerate() {
+                if i > 0 {
+                    tag_spans.push(ratatui::text::Span::raw(" "));
+                }
                 tag_spans.push(ratatui::text::Span::styled(
-                    format!(" #{} ", tag),
-                    Style::default().fg(Color::White).bg(Color::Yellow),
+                    format!("{}",tag),
+                    Style::default().fg(Color::White).bg(Color::DarkGray),
                 ));
-                tag_spans.push(ratatui::text::Span::raw(" "));
             }
             details_text.push(ratatui::text::Line::from(tag_spans));
             details_text.push(ratatui::text::Line::from(""));
         }
 
-        // 2. Title
-        details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-            clean_html(&task.title),
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(Color::Cyan),
-        )));
+        // 5. Notes
+        let notes_text = task.notes.clone().unwrap_or_else(|| "None".to_string());
+        for line in clean_html(&notes_text).lines() {
+            details_text.push(ratatui::text::Line::from(ratatui::text::Span::raw(line.to_string())));
+        }
         details_text.push(ratatui::text::Line::from(""));
 
-        // 3. Assignments
-        if let Some(ref assignments) = task.assignments
-            && !assignments.is_empty()
-        {
-            let assignee_names: Vec<String> = assignments.iter().map(|a| a.name.clone()).collect();
-            details_text.push(ratatui::text::Line::from(vec![
-                ratatui::text::Span::raw("👤 "),
-                ratatui::text::Span::raw(assignee_names.join(", ")),
-            ]));
-            details_text.push(ratatui::text::Line::from(""));
-        }
-
-        // 4. Dates & Repeat
-        let mut date_spans = Vec::new();
-
-        if let Some(ref dd) = task.due_date
-            && let Some(ref rd) = dd.raw_date
-        {
-            date_spans.push(ratatui::text::Span::styled(
-                "Due: ",
-                Style::default().fg(Color::Magenta),
-            ));
-            date_spans.push(ratatui::text::Span::raw(rd.clone()));
-            date_spans.push(ratatui::text::Span::raw("  "));
-        }
-
-        if let Some(ref cd) = task.creation_date {
-            date_spans.push(ratatui::text::Span::styled(
-                "Created: ",
-                Style::default().fg(Color::Blue),
-            ));
-            date_spans.push(ratatui::text::Span::raw(cd.raw.clone()));
-            date_spans.push(ratatui::text::Span::raw("  "));
-        }
-
-        // Repeat info
-        if task.repeats.is_object() || task.repeats.as_bool().unwrap_or(false) {
-            date_spans.push(ratatui::text::Span::styled(
-                "🔄",
-                Style::default().fg(Color::Green),
-            ));
-        }
-
-        if !date_spans.is_empty() {
-            details_text.push(ratatui::text::Line::from(date_spans));
-            details_text.push(ratatui::text::Line::from(""));
-        }
-
-        // 5. Notes
+        // 6. Comments & Activity Placeholders (No blockquote)
         details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-            "Notes:",
-            Style::default().add_modifier(Modifier::UNDERLINED),
+            "[Comments: Not available in Beta API]",
+            Style::default().add_modifier(Modifier::DIM),
         )));
-        let notes_text = task.notes.clone().unwrap_or_else(|| "None".to_string());
-        details_text.push(ratatui::text::Line::from(clean_html(&notes_text)));
+        details_text.push(ratatui::text::Line::from(""));
+        details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+            "[Activity: Not available in Beta API]",
+            Style::default().add_modifier(Modifier::DIM),
+        )));
+
     } else {
         details_text.push(ratatui::text::Line::from("No task selected"));
     }
@@ -227,7 +265,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     frame.render_widget(status_bar, status_chunks[0]);
 
     if let Some(last_sync) = app.last_synced {
-        let sync_text = format!("Last Synced: {}", last_sync.format("%Y-%m-%dT%H:%M:%S"));
+        let sync_text = format!("Last Synced: {}", last_sync.format("%Y-%m-%d %H:%M"));
         let sync_hint = Paragraph::new(sync_text)
             .style(Style::default().add_modifier(Modifier::DIM))
             .alignment(ratatui::layout::Alignment::Right);

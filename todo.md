@@ -48,8 +48,8 @@
 - [x] When the program is launched and there is no existing database or configuration, the user should be prompted to either (a) input a Gqueues API key to sync from an existing account (b) specify the path of an existing local gqt database, (c) create a new local-only GQT database (and the user should specify the  path with an XDG default path suggested)
 - [x] Add a '?' command to show a help screen.
 - [x] I want the bottom line of the TUI to always show when a sync is happening and the status of that sync.
-- [ ] Update The task detail on the right pane should include the url to the web client's task so a user can click on the link (in some terminal emulators) to go to the official gqueues web client (assuming the task is sync'd to gqueues - if not, then no url should be displayed)
-- [ ] when the status bar shows a successful sync, it should include text about the time it was last sync'd in ISO 8601 timestamp format adjusted for the user's local (system) time
+- [x] Update The task detail on the right pane should include the url to the web client's task so a user can click on the link (in some terminal emulators) to go to the official gqueues web client (assuming the task is sync'd to gqueues - if not, then no url should be displayed)
+- [x] when the status bar shows a successful sync, it should include text about the time it was last sync'd in ISO 8601 timestamp format adjusted for the user's local (system) time
 - [x] The list of queues and tasks within a queue are sometimes longer than can be displayed vertically within the TUI. We need to implement scrolling for when the user scrolls further down in any of the panes than can be displayed within the current vertical dimensions of a pane. 
 - [ ] I noticed that when I deleted a task in the Gqueues web UI that it didn't delete in the gqt TUI. I dont know if an API call will list the deleted tasks, but we will need someway to apply deletions from the official gqueues remote database to the local database.
 - [x] Implement keyboard configuration customization. The default keyboard controls should match the web version of gqueues as closely as possible except where they would be impractical or impossible within a TUI envrionment. They should be configurable via a `config.toml` stored in the appropriate XDG path and all the defaults should be pre-loaded in the configuration file on first run. 
@@ -60,7 +60,7 @@
 - [x] When navigating the category list, make it so that the space bar can be pressed to expand/collapse a category
 - [ ] Implement the shortcut keys for hiding/showing the left and right panels as VSCode uses for the left and right side panels.
 - [x] Implment a shortcut key press to 'Sync now' which should basically force a sync between the local database and the gqueues web service.
-- [ ] Re-design and update formatting of task details
+- [x] Re-design and update formatting of task details
 - [ ] Re-design and update the formatting of the help screen '?'
 - [ ] When first loading gqt, the tasks from the Inbox queue are shown in the center pane (correctly) but the navigation pane should also have the Inbox queue selected. Currently it shows the Category being selected. It should expand the necessary Category (if applicable) and show the Inbox queue selected.
 
