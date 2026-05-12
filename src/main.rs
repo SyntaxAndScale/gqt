@@ -1,7 +1,7 @@
 mod actions;
 mod app;
-mod db;
 mod config;
+mod db;
 mod keys;
 mod models;
 mod sync;
@@ -9,20 +9,39 @@ mod ui;
 mod wizard;
 
 use anyhow::Result;
-use crossterm::{
-    event::{self, Event},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io;
-use tokio::sync::mpsc;
-
-use crate::actions::Action;
-use crate::app::{App, NavEntry, Pane};
-use gqueues_api_rs::GqueuesClient;
+use crossterm::event::{self, Event, KeyCode};
+use crate::app::{App, InputMode, NavEntry, Pane};
+use crate::config::load_config;
+use crate::db::Database;
 use crate::keys::KeyHandler;
 use crate::sync::{SyncCommand, SyncEngine, SyncEvent};
+use crate::actions::Action;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+
+fn save_new_task(app: &mut App, title: String, parent_key: Option<String>) -> anyhow::Result<()> {
+    if let Some(queue) = app.selected_queue() {
+        let new_task = gqueues_api_rs::models::Task {
+            key: "".into(),
+            title,
+            notes: None,
+            completed: false,
+            queue_key: Some(queue.key),
+            parent_key,
+            subitems: None,
+            tags: None,
+            assignments: None,
+            creation_date: None,
+            due_date: None,
+            repeats: serde_json::Value::Bool(false),
+        };
+        let db = app.db.lock().unwrap();
+        db.add_task_local(new_task)?;
+        app.status = "✅ Task created".into();
+    }
+    app.reload_tasks();
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,93 +51,59 @@ async fn main() -> Result<()> {
         simplelog::Config::default(),
         std::fs::File::create("gqt.log")?,
     );
-    log::info!("Starting Gqueues TUI");
 
-    // Load config or run wizard
-    let settings = match config::load_config()? {
-        Some(s) => s,
-        None => {
-            let default_db_path = db::Database::get_default_db_path()?;
-            wizard::run(default_db_path).await?
-        }
-    };
-
-    let db_path = settings
-        .database_path
-        .clone()
-        .unwrap_or_else(|| db::Database::get_default_db_path().expect("Could not determine default DB path"));
+    // Load config
+    let settings = load_config()?.unwrap_or_else(|| {
+        panic!("Config not found. Please run the setup wizard first.");
+    });
 
     // Initialize database
-    let db = db::Database::new(db_path.clone())?;
+    let db_path = Database::get_default_db_path()?;
+    let db = Database::new(db_path.clone())?;
 
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    // Initialize API client
+    let client = gqueues_api_rs::GqueuesClient::new(
+        settings.gqueues.api_endpoint.unwrap_or_else(|| "https://api.gqueues.com/beta".to_string()),
+        settings.gqueues.access_token.unwrap_or_default(),
+    );
 
-    // Initialize client for App
-    let endpoint = settings
-        .gqueues
-        .api_endpoint
-        .clone()
-        .unwrap_or_else(|| "https://api.gqueues.com".into());
-    let token = settings.gqueues.access_token.clone().unwrap_or_default();
-    let client = std::sync::Arc::new(GqueuesClient::new(endpoint, token));
-
-    // Create app state
-    let config_path = config::get_config_path("config.toml")?;
+    // Initialize app state
     let mut app = App::new(
-        (*client).clone(),
+        client.clone(),
         db,
-        config_path,
+        crate::config::get_config_path("config.toml")?,
         db_path,
         settings.keybindings.clone(),
     );
 
-    // Setup Key Handler
+    // Initialize Sync Engine
+    let (sync_tx, mut sync_rx) = mpsc::channel(100);
+    let (cmd_tx, cmd_rx) = mpsc::channel(100);
+    let active_queue_key = app.active_queue_key.clone();
+    let db_shared = app.db.clone();
+
+    let mut engine = SyncEngine::new(
+        Arc::new(client),
+        db_shared,
+        active_queue_key,
+        sync_tx,
+        cmd_rx,
+    );
+
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    // Initialize TUI
+    crossterm::terminal::enable_raw_mode()?;
+    let mut stdout = std::io::stdout();
+    crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?;
+    let backend = ratatui::backend::CrosstermBackend::new(stdout);
+    let mut terminal = ratatui::Terminal::new(backend)?;
+
     let mut key_handler = KeyHandler::new(&settings.keybindings);
 
-    // Setup Sync Engine (only if token is available)
-    let (cmd_tx, _cmd_rx_sink) = mpsc::channel(32);
-    let (sync_tx, sync_rx) = mpsc::channel(32);
-
-    if settings.gqueues.access_token.is_some() {
-        let (tx, rx) = mpsc::channel(32);
-        let mut sync_engine = SyncEngine::new(
-            client.clone(),
-            app.db.clone(),
-            app.active_queue_key.clone(),
-            sync_tx,
-            rx,
-        );
-        tokio::spawn(async move {
-            sync_engine.run().await;
-        });
-
-        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, tx).await?;
-    } else {
-        app.status = "Offline Mode".into();
-        run_main_loop(&mut terminal, &mut app, &mut key_handler, sync_rx, cmd_tx).await?;
-    }
-
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
-    terminal.show_cursor()?;
-
-    Ok(())
-}
-
-async fn run_main_loop(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-    key_handler: &mut KeyHandler,
-    mut sync_rx: mpsc::Receiver<SyncEvent>,
-    cmd_tx: mpsc::Sender<SyncCommand>,
-) -> Result<()> {
-    // Load initial state from DB
+    // Initial data load
     {
         let db = app.db.lock().unwrap();
         if let Ok(queues) = db.get_queues() {
@@ -150,7 +135,7 @@ async fn run_main_loop(
     }
 
     while app.running {
-        terminal.draw(|f| ui::render(f, app))?;
+        terminal.draw(|f| ui::render(f, &mut app))?;
 
         // Check for sync events
         while let Ok(event) = sync_rx.try_recv() {
@@ -205,174 +190,267 @@ async fn run_main_loop(
             }
         }
 
-        if event::poll(std::time::Duration::from_millis(100))?
-            && let Event::Key(key) = event::read()?
-            && let Some(action) = key_handler.handle_key(key)
-        {
-            match action {
-                Action::Quit => app.running = false,
-                Action::Sync => {
-                    app.status = "⏳ Manual sync triggered...".into();
-                    let _ = cmd_tx.send(SyncCommand::ForceSync).await;
+        if event::poll(std::time::Duration::from_millis(100))? {
+            let event = event::read()?;
+            if let Event::Key(key) = event {
+                // 1. Handle Input Mode (Text Entry)
+                if let InputMode::CreatingTask { title, parent_key, target_index } = app.input_mode.clone() {
+                    match key.code {
+                        KeyCode::Enter => {
+                            if !title.trim().is_empty() {
+                                save_new_task(&mut app, title, parent_key)?;
+                            }
+                            app.input_mode = InputMode::Normal;
+                        }
+                        KeyCode::Tab => {
+                            if !title.trim().is_empty() {
+                                save_new_task(&mut app, title, parent_key.clone())?;
+                                // Start another one below
+                                app.input_mode = InputMode::CreatingTask {
+                                    title: String::new(),
+                                    parent_key,
+                                    target_index: target_index + 1,
+                                };
+                                app.task_state.select(Some(target_index + 1));
+                            }
+                        }
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                        }
+                        KeyCode::Char(c) => {
+                            let mut new_title = title;
+                            new_title.push(c);
+                            app.input_mode = InputMode::CreatingTask {
+                                title: new_title,
+                                parent_key,
+                                target_index,
+                            };
+                        }
+                        KeyCode::Backspace => {
+                            let mut new_title = title;
+                            new_title.pop();
+                            app.input_mode = InputMode::CreatingTask {
+                                title: new_title,
+                                parent_key,
+                                target_index,
+                            };
+                        }
+                        _ => {}
+                    }
+                    continue; // Skip normal key handler
                 }
-                Action::NextPane => app.next_pane(),
-                Action::PrevPane => app.previous_pane(),
-                Action::Select => {
-                    if app.active_pane == Pane::Queues {
-                        let nav_entries = app.get_nav_entries();
-                        let selected = app.nav_state.selected().unwrap_or(0);
-                        if let Some(entry) = nav_entries.get(selected) {
-                            match entry {
-                                NavEntry::Category { name, .. } => {
+
+                // 2. Handle Normal Mode (Actions)
+                if let Some(action) = key_handler.handle_key(key) {
+                    match action {
+                        Action::Quit => app.running = false,
+                        Action::Sync => {
+                            app.status = "⏳ Manual sync triggered...".into();
+                            let _ = cmd_tx.send(SyncCommand::ForceSync).await;
+                        }
+                        Action::NextPane => app.next_pane(),
+                        Action::PrevPane => app.previous_pane(),
+                        Action::InsertTaskBelow | Action::InsertTaskAbove | Action::AddTaskBottom | Action::AddTaskTop => {
+                            if let Some(_queue) = app.selected_queue() {
+                                let visible_tasks = app.get_visible_tasks();
+                                let selected = app.task_state.selected().unwrap_or(0);
+                                
+                                let (parent_key, target_index) = match action {
+                                    Action::InsertTaskBelow => {
+                                        if let Some((task, _)) = visible_tasks.get(selected) {
+                                            (task.parent_key.clone(), selected + 1)
+                                        } else {
+                                            (None, visible_tasks.len())
+                                        }
+                                    }
+                                    Action::InsertTaskAbove => {
+                                        if let Some((task, _)) = visible_tasks.get(selected) {
+                                            (task.parent_key.clone(), selected)
+                                        } else {
+                                            (None, 0)
+                                        }
+                                    }
+                                    Action::AddTaskBottom => (None, visible_tasks.len()),
+                                    Action::AddTaskTop => (None, 0),
+                                    _ => unreachable!(),
+                                };
+
+                                app.active_pane = Pane::Tasks;
+                                app.input_mode = InputMode::CreatingTask {
+                                    title: String::new(),
+                                    parent_key,
+                                    target_index,
+                                };
+                                app.task_state.select(Some(target_index));
+                            }
+                        }
+                        Action::Select => {
+                            if app.active_pane == Pane::Queues {
+                                let nav_entries = app.get_nav_entries();
+                                let selected = app.nav_state.selected().unwrap_or(0);
+                                if let Some(entry) = nav_entries.get(selected) {
+                                    match entry {
+                                        NavEntry::Category { name, .. } => {
+                                            if app.expanded_categories.contains(name) {
+                                                app.expanded_categories.remove(name);
+                                            } else {
+                                                app.expanded_categories.insert(name.clone());
+                                            }
+                                        }
+                                        NavEntry::Queue(queue) => {
+                                            let queue_key = queue.key.clone();
+                                            {
+                                                let mut active = app.active_queue_key.lock().unwrap();
+                                                *active = Some(queue_key.clone());
+                                            }
+                                            app.status = format!("⏳ Loading {}...", queue.name);
+                                            let db = app.db.lock().unwrap();
+                                            match db.get_tasks(&queue_key) {
+                                                Ok(tasks) => {
+                                                    app.tasks = tasks;
+                                                    app.task_state.select(Some(0));
+                                                    app.detail_scroll = 0;
+                                                    app.status = format!("✅ Loaded {}", queue.name);
+                                                }
+                                                Err(e) => app.status = format!("❌ Local DB error: {}", e),
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Action::QuickAdd => {
+                            if let Some(queue) = app.selected_queue() {
+                                let queue_key = queue.key.clone();
+                                app.status = format!("⏳ Creating task in {}...", queue.name);
+                                let new_task = gqueues_api_rs::models::Task {
+                                    key: "".into(),
+                                    title: "New Local Task".into(),
+                                    notes: Some("Created offline".into()),
+                                    completed: false,
+                                    queue_key: Some(queue_key),
+                                    parent_key: None,
+                                    subitems: None,
+                                    tags: None,
+                                    assignments: None,
+                                    creation_date: None,
+                                    due_date: None,
+                                    repeats: serde_json::Value::Bool(false),
+                                };
+                                let db = app.db.lock().unwrap();
+                                match db.add_task_local(new_task) {
+                                    Ok(task) => {
+                                        app.tasks.push(task);
+                                        let visible_tasks = app.get_visible_tasks();
+                                        app.task_state.select(Some(visible_tasks.len().saturating_sub(1)));
+                                        app.detail_scroll = 0;
+                                        app.status = "✅ Local task created".into();
+                                    }
+                                    Err(e) => app.status = format!("❌ Failed to create local task: {}", e),
+                                }
+                            }
+                        }
+                        Action::ToggleExpand | Action::ToggleSubtasks => {
+                            if app.active_pane == Pane::Tasks {
+                                let visible_tasks = app.get_visible_tasks();
+                                let selected = app.task_state.selected().unwrap_or(0);
+                                if let Some((task, _)) = visible_tasks.get(selected) {
+                                    if app.expanded_tasks.contains(&task.key) {
+                                        app.expanded_tasks.remove(&task.key);
+                                    } else {
+                                        app.expanded_tasks.insert(task.key.clone());
+                                    }
+                                }
+                            } else if app.active_pane == Pane::Queues {
+                                let nav_entries = app.get_nav_entries();
+                                let selected = app.nav_state.selected().unwrap_or(0);
+                                if let Some(NavEntry::Category { name, .. }) = nav_entries.get(selected) {
                                     if app.expanded_categories.contains(name) {
                                         app.expanded_categories.remove(name);
                                     } else {
                                         app.expanded_categories.insert(name.clone());
                                     }
                                 }
-                                NavEntry::Queue(queue) => {
-                                    let queue_key = queue.key.clone();
-                                    {
-                                        let mut active = app.active_queue_key.lock().unwrap();
-                                        *active = Some(queue_key.clone());
-                                    }
-                                    app.status = format!("⏳ Loading {}...", queue.name);
-                                    let db = app.db.lock().unwrap();
-                                    match db.get_tasks(&queue_key) {
-                                        Ok(tasks) => {
-                                            app.tasks = tasks;
-                                            app.task_state.select(Some(0));
-                                            app.detail_scroll = 0;
-                                            app.status = format!("✅ Loaded {}", queue.name);
-                                        }
-                                        Err(e) => app.status = format!("❌ Local DB error: {}", e),
-                                    }
+                            }
+                        }
+                        Action::MoveDown => match app.active_pane {
+                            Pane::Queues => {
+                                let nav_entries = app.get_nav_entries();
+                                let current = app.nav_state.selected().unwrap_or(0);
+                                if current < nav_entries.len().saturating_sub(1) {
+                                    app.nav_state.select(Some(current + 1));
+                                }
+                            }
+                            Pane::Tasks => {
+                                let visible_tasks = app.get_visible_tasks();
+                                let current = app.task_state.selected().unwrap_or(0);
+                                if current < visible_tasks.len().saturating_sub(1) {
+                                    app.task_state.select(Some(current + 1));
+                                    app.detail_scroll = 0;
+                                }
+                            }
+                            Pane::Details => {
+                                app.detail_scroll = app.detail_scroll.saturating_add(1);
+                            }
+                        },
+                        Action::MoveUp => match app.active_pane {
+                            Pane::Queues => {
+                                let current = app.nav_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.nav_state.select(Some(current - 1));
+                                }
+                            }
+                            Pane::Tasks => {
+                                let current = app.task_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.task_state.select(Some(current - 1));
+                                    app.detail_scroll = 0;
+                                }
+                            }
+                            Pane::Details => {
+                                app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                            }
+                        },
+                        Action::GoToInbox => {
+                            if let Some(inbox) = app.queues.iter().find(|q| q.is_inbox) {
+                                let inbox_key = inbox.key.clone();
+                                let mut active = app.active_queue_key.lock().unwrap();
+                                *active = Some(inbox_key.clone());
+                                app.status = "⏳ Jumping to Inbox...".into();
+                                let db = app.db.lock().unwrap();
+                                if let Ok(tasks) = db.get_tasks(&inbox_key) {
+                                    app.tasks = tasks;
+                                    app.task_state.select(Some(0));
+                                    app.active_pane = Pane::Tasks;
                                 }
                             }
                         }
-                    }
-                }
-                Action::QuickAdd => {
-                    if let Some(queue) = app.selected_queue() {
-                        let queue_key = queue.key.clone();
-                        app.status = format!("⏳ Creating task in {}...", queue.name);
-                        let new_task = gqueues_api_rs::models::Task {
-                            key: "".into(),
-                            title: "New Local Task".into(),
-                            notes: Some("Created offline".into()),
-                            completed: false,
-                            queue_key: Some(queue_key),
-                            parent_key: None,
-                            subitems: None,
-                            tags: None,
-                            assignments: None,
-                            creation_date: None,
-                            due_date: None,
-                            repeats: serde_json::Value::Bool(false),
-                        };
-                        let db = app.db.lock().unwrap();
-                        match db.add_task_local(new_task) {
-                            Ok(task) => {
-                                app.tasks.push(task);
-                                let visible_tasks = app.get_visible_tasks();
-                                app.task_state.select(Some(visible_tasks.len().saturating_sub(1)));
-                                app.detail_scroll = 0;
-                                app.status = "✅ Local task created".into();
-                            }
-                            Err(e) => app.status = format!("❌ Failed to create local task: {}", e),
+                        Action::Help => {
+                            app.show_help = true;
                         }
-                    }
-                }
-                Action::ToggleExpand | Action::ToggleSubtasks => {
-                    if app.active_pane == Pane::Tasks {
-                        let visible_tasks = app.get_visible_tasks();
-                        let selected = app.task_state.selected().unwrap_or(0);
-                        if let Some((task, _)) = visible_tasks.get(selected) {
-                            if app.expanded_tasks.contains(&task.key) {
-                                app.expanded_tasks.remove(&task.key);
+                        Action::Cancel => {
+                            if app.show_help {
+                                app.show_help = false;
                             } else {
-                                app.expanded_tasks.insert(task.key.clone());
+                                app.status = "Ready".into();
                             }
                         }
-                    } else if app.active_pane == Pane::Queues {
-                        let nav_entries = app.get_nav_entries();
-                        let selected = app.nav_state.selected().unwrap_or(0);
-                        if let Some(NavEntry::Category { name, .. }) = nav_entries.get(selected) {
-                            if app.expanded_categories.contains(name) {
-                                app.expanded_categories.remove(name);
-                            } else {
-                                app.expanded_categories.insert(name.clone());
-                            }
+                        _ => {
+                            app.status = format!("Action {:?} not yet implemented", action);
                         }
                     }
-                }
-                Action::MoveDown => match app.active_pane {
-                    Pane::Queues => {
-                        let nav_entries = app.get_nav_entries();
-                        let current = app.nav_state.selected().unwrap_or(0);
-                        if current < nav_entries.len().saturating_sub(1) {
-                            app.nav_state.select(Some(current + 1));
-                        }
-                    }
-                    Pane::Tasks => {
-                        let visible_tasks = app.get_visible_tasks();
-                        let current = app.task_state.selected().unwrap_or(0);
-                        if current < visible_tasks.len().saturating_sub(1) {
-                            app.task_state.select(Some(current + 1));
-                            app.detail_scroll = 0;
-                        }
-                    }
-                    Pane::Details => {
-                        app.detail_scroll = app.detail_scroll.saturating_add(1);
-                    }
-                },
-                Action::MoveUp => match app.active_pane {
-                    Pane::Queues => {
-                        let current = app.nav_state.selected().unwrap_or(0);
-                        if current > 0 {
-                            app.nav_state.select(Some(current - 1));
-                        }
-                    }
-                    Pane::Tasks => {
-                        let current = app.task_state.selected().unwrap_or(0);
-                        if current > 0 {
-                            app.task_state.select(Some(current - 1));
-                            app.detail_scroll = 0;
-                        }
-                    }
-                    Pane::Details => {
-                        app.detail_scroll = app.detail_scroll.saturating_sub(1);
-                    }
-                },
-                Action::GoToInbox => {
-                    if let Some(inbox) = app.queues.iter().find(|q| q.is_inbox) {
-                        let inbox_key = inbox.key.clone();
-                        let mut active = app.active_queue_key.lock().unwrap();
-                        *active = Some(inbox_key.clone());
-                        app.status = "⏳ Jumping to Inbox...".into();
-                        let db = app.db.lock().unwrap();
-                        if let Ok(tasks) = db.get_tasks(&inbox_key) {
-                            app.tasks = tasks;
-                            app.task_state.select(Some(0));
-                            app.active_pane = Pane::Tasks;
-                        }
-                    }
-                }
-                Action::Help => {
-                    app.show_help = true;
-                }
-                Action::Cancel => {
-                    if app.show_help {
-                        app.show_help = false;
-                    } else {
-                        app.status = "Ready".into();
-                    }
-                }
-                _ => {
-                    app.status = format!("Action {:?} not yet implemented", action);
                 }
             }
         }
     }
+
+    // Clean up TUI
+    crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(
+        terminal.backend_mut(),
+        crossterm::terminal::LeaveAlternateScreen,
+    )?;
+    terminal.show_cursor()?;
+
     Ok(())
 }

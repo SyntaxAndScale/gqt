@@ -53,6 +53,11 @@
 - **Versioning:** Incremented version to `0.1.26`.
 
 ## 2026-05-12
-- **Pane Navigation Fix:** Re-implemented Shift+Tab for backward pane switching.
-    - **Key Handling:** Fixed a bug in `src/keys.rs` where `KeyCode::BackTab` combined with the `SHIFT` modifier resulted in a double "shift-shift-tab" sequence.
+- **Pane Navigation Fix:** Re-implemented Shift+Tab for backward pane switching by fixing a double-prefix bug in `src/keys.rs`.
+- **Inline Task Creation:** Implemented advanced task creation shortcuts with inline title editing.
+    - **Shortcuts:** Added support for `i` (below), `Shift+i` (above), `o` (bottom), and `Shift+o` (top).
+    - **Inline Editor:** Created a "virtual" task entry in the UI with a real-time cursor for title entry.
+    - **Bulk Add:** Implemented `Tab` key behavior to save the current task and immediately start another one below.
+    - **Cancellation:** Configured `Esc` to cancel and discard the new task (deliberate departure from GQueues Web UI behavior).
+    - **Stable Ordering:** Updated local database queries to ensure tasks are ordered by creation date, maintaining predictable list positions.
     - **Regression Testing:** Added a unit test suite to `src/keys.rs` to verify correct key-to-string conversion for Tab, Shift+Tab (BackTab), and Control sequences.

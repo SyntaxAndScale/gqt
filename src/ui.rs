@@ -62,7 +62,41 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             Style::default()
         });
 
-    let visible_tasks = app.get_visible_tasks();
+    let mut visible_tasks = app.get_visible_tasks();
+    
+    // Inject virtual task if creating
+    if let crate::app::InputMode::CreatingTask { title, parent_key, target_index } = &app.input_mode {
+        // Calculate depth for the virtual task
+        let depth = if let Some(pk) = parent_key {
+            // Find parent's depth and add 1
+            visible_tasks.iter()
+                .find(|(t, _)| &t.key == pk)
+                .map(|(_, d)| d + 1)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        
+        // Create a dummy task for rendering
+        let dummy_task = gqueues_api_rs::models::Task {
+            key: "virtual-creating".into(),
+            title: format!("{}_", title), // Show cursor
+            notes: None,
+            completed: false,
+            queue_key: None,
+            parent_key: parent_key.clone(),
+            subitems: None,
+            tags: None,
+            assignments: None,
+            creation_date: None,
+            due_date: None,
+            repeats: serde_json::Value::Bool(false),
+        };
+        
+        let safe_index = (*target_index).min(visible_tasks.len());
+        visible_tasks.insert(safe_index, (dummy_task, depth));
+    }
+
     let task_items: Vec<ListItem> = visible_tasks
         .iter()
         .map(|(task, depth)| {
@@ -327,6 +361,10 @@ fn render_help_modal(frame: &mut Frame, app: &App) {
         "prev_pane",
         "cancel",
         "quick_add",
+        "insert_task_below",
+        "insert_task_above",
+        "add_task_bottom",
+        "add_task_top",
         "toggle_expand",
         "toggle_subtasks",
         "move_up",

@@ -102,11 +102,6 @@
     </div>
 
 ## TODO Before Open Sourcing
+- [x] Implement advanced task creation shortcuts ('i', 'Shift+i', 'o', 'Shift+o')
+- [ ] Future: support specification of due dates using 'due on' text parsing
 - [ ] Choose and apply a license based on what is legally viable by what the imported crates use
-- [ ] Review and clean up the most egregious AI slop
-- [ ] Update readme.md to be clear this is AI generated code, the roadmap, installation, usage, vision, etc.
-- [ ] Fix journal dates to be based on git history
-- [ ] Update the help screen with the github url
-- [ ] Update `spec.md` with the latest information based on current state of code. Should include urls to api documentation and keyboard shortcut documentation. 
-- [ ] Add a disclaimer to help screen and readme.md that this is not an official gqueues product
-- [ ] Spin out gqueues-api-rs

@@ -257,7 +257,8 @@ impl Database {
                 t.repeats
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
-             WHERE q.remote_key = ?1 OR q.local_id = ?1",
+             WHERE q.remote_key = ?1 OR q.local_id = ?1
+             ORDER BY t.creation_date ASC, t.local_id ASC",
         )?;
         let rows = stmt.query_map([queue_key], |row| {
             Ok(Task {

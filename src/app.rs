@@ -14,6 +14,19 @@ pub enum Pane {
     Details,
 }
 
+/// Represents the current input mode of the application.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    /// Creating a new task inline.
+    CreatingTask {
+        title: String,
+        parent_key: Option<String>,
+        /// The index in the visible list where the input field should appear.
+        target_index: usize,
+    },
+}
+
 /// Represents an entry in the navigation sidebar (left pane).
 #[derive(Debug, Clone)]
 pub enum NavEntry {
@@ -57,6 +70,8 @@ pub struct App {
     pub db_path: PathBuf,
     /// The currently focused pane.
     pub active_pane: Pane,
+    /// Current input mode.
+    pub input_mode: InputMode,
     /// Controls the main execution loop.
     pub running: bool,
     /// The message displayed in the status bar.
@@ -94,8 +109,24 @@ impl App {
             config_path,
             db_path,
             active_pane: Pane::Queues,
+            input_mode: InputMode::Normal,
             running: true,
             status: "Ready".into(),
+        }
+    }
+
+    /// Reloads tasks for the active queue from the local database.
+    pub fn reload_tasks(&mut self) {
+        let active_key = {
+            let active = self.active_queue_key.lock().unwrap();
+            active.clone()
+        };
+        if let Some(key) = active_key {
+            let db = self.db.lock().unwrap();
+            match db.get_tasks(&key) {
+                Ok(tasks) => self.tasks = tasks,
+                Err(e) => self.status = format!("❌ Local DB error: {}", e),
+            }
         }
     }
 
