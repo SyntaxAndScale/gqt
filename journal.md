@@ -51,3 +51,8 @@
     - **Due Date Coloring:** Implemented color-coding for the due date in the Details pane—**Green** for tasks due today or in the future, and **Red** for overdue tasks.
     - **Repeating Tasks:** Improved detection logic for the 🔁 emoji to support all recurrence formats and added a fallback for emojis present in the task title.
 - **Versioning:** Incremented version to `0.1.26`.
+
+## 2026-05-12
+- **Pane Navigation Fix:** Re-implemented Shift+Tab for backward pane switching.
+    - **Key Handling:** Fixed a bug in `src/keys.rs` where `KeyCode::BackTab` combined with the `SHIFT` modifier resulted in a double "shift-shift-tab" sequence.
+    - **Regression Testing:** Added a unit test suite to `src/keys.rs` to verify correct key-to-string conversion for Tab, Shift+Tab (BackTab), and Control sequences.

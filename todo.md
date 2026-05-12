@@ -64,10 +64,11 @@
 - [ ] Re-design and update the formatting of the help screen '?'
 - [ ] When first loading gqt, the tasks from the Inbox queue are shown in the center pane (correctly) but the navigation pane should also have the Inbox queue selected. Currently it shows the Category being selected. It should expand the necessary Category (if applicable) and show the Inbox queue selected.
 - [ ] Consider encrypting the local database
-- [ ] BUG: Enable shift+tab to navigate between panes
+- [x] BUG: Enable shift+tab to navigate between panes
 - [ ] Feature: Implement keyboard shortcuts to hide/show left and right panes
 - [ ] Feature: Implement command and keyboard shortcut to 'maximize' the task detail pane.
 - [ ] BUG: When initially loading, gqt correctly shows the task list of the Inbox, but the left pane doesn't show the Inbox queue highlighted. It should. Which means that the collapsed state of the Inbox's Category must be expanded and the Inbox highlighted.
+- [x] Re-implement Shift+Tab navigation for switching panes
 - [ ] Feature: Task Creation using Quick Task modal. This should match the functionality and layout (but not necessairly the presentation) of Gqueues's Web Quick Task Entry as close as reasonably possible. Gqueues Quick Task Modal's help page is here: https://learn.gqueues.com/en/articles/5305392-add-tasks-quicker-using-quick-add#h_961e305883 and as an example, the web form's element looks like this when 'q' is pressed whlie within the "# Home Maintenance and Projects (shared)" queue: <div class="gq-dialog-content-container">
         <div class="gq-dialog-title-bar">
             <div translate="no" class="gq-dialog-drag-icon material-icons">drag_indicator</div>

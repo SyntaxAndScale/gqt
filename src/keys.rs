@@ -126,7 +126,9 @@ impl KeyHandler {
         if event.modifiers.contains(KeyModifiers::ALT) {
             s.push_str("alt-");
         }
-        if event.modifiers.contains(KeyModifiers::SHIFT) && !matches!(event.code, KeyCode::Char(_))
+        if event.modifiers.contains(KeyModifiers::SHIFT)
+            && !matches!(event.code, KeyCode::Char(_))
+            && !matches!(event.code, KeyCode::BackTab)
         {
             s.push_str("shift-");
         }
@@ -160,3 +162,43 @@ impl KeyHandler {
         s.to_lowercase()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
+
+    #[test]
+    fn test_key_event_to_string() {
+        let config = KeybindingsConfig::default();
+        let handler = KeyHandler::new(&config);
+
+        // Shift-Tab (BackTab)
+        let event = KeyEvent {
+            code: KeyCode::BackTab,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        assert_eq!(handler.key_event_to_string(event), "shift-tab");
+
+        // Regular Tab
+        let event = KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        assert_eq!(handler.key_event_to_string(event), "tab");
+
+        // Ctrl-C
+        let event = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        assert_eq!(handler.key_event_to_string(event), "ctrl-c");
+    }
+}
+
