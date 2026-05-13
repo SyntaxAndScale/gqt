@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use directories::ProjectDirs;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::PathBuf;
 
@@ -67,6 +67,14 @@ impl Database {
                 creation_date TEXT,
                 due_date TEXT,
                 repeats TEXT,
+                position TEXT,
+                section_key TEXT,
+                attachments TEXT,
+                crossed INTEGER NOT NULL DEFAULT 0,
+                num_comments INTEGER DEFAULT 0,
+                has_subitems INTEGER NOT NULL DEFAULT 0,
+                access TEXT,
+                add_comments INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY(queue_id) REFERENCES queues(local_id)
             )",
             [],
@@ -193,13 +201,14 @@ impl Database {
         let creation_date_json = serde_json::to_string(&task.creation_date)?;
         let due_date_json = serde_json::to_string(&task.due_date)?;
         let repeats_json = serde_json::to_string(&task.repeats)?;
+        let attachments_json = serde_json::to_string(&task.attachments)?;
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments)
              VALUES (?1, ?2, 
                 (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
                 (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
-                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
              ON CONFLICT(remote_key) DO UPDATE SET
                 title = excluded.title,
                 notes = excluded.notes,
@@ -211,8 +220,16 @@ impl Database {
                 assignments = excluded.assignments,
                 creation_date = excluded.creation_date,
                 due_date = excluded.due_date,
-                repeats = excluded.repeats",
-            (
+                repeats = excluded.repeats,
+                position = excluded.position,
+                section_key = excluded.section_key,
+                attachments = excluded.attachments,
+                crossed = excluded.crossed,
+                num_comments = excluded.num_comments,
+                has_subitems = excluded.has_subitems,
+                access = excluded.access,
+                add_comments = excluded.add_comments",
+            params![
                 Uuid::new_v4().to_string(),
                 &task.key,
                 &task.queue_key,
@@ -226,7 +243,15 @@ impl Database {
                 creation_date_json,
                 due_date_json,
                 repeats_json,
-            ),
+                &task.position,
+                &task.section_key,
+                attachments_json,
+                if task.crossed { 1 } else { 0 },
+                task.num_comments,
+                if task.has_subitems { 1 } else { 0 },
+                &task.access,
+                if task.add_comments { 1 } else { 0 },
+            ],
         )?;
 
         if let Some(ref items) = task.subitems {
@@ -254,11 +279,23 @@ impl Database {
                 t.assignments, 
                 t.creation_date, 
                 t.due_date, 
-                t.repeats
+                t.repeats,
+                t.position,
+                t.section_key,
+                t.attachments,
+                t.crossed,
+                t.num_comments,
+                t.has_subitems,
+                t.access,
+                t.add_comments
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
              WHERE q.remote_key = ?1 OR q.local_id = ?1
-             ORDER BY t.creation_date ASC, t.local_id ASC",
+             ORDER BY 
+                CASE WHEN t.position IS NULL THEN 1 ELSE 0 END, 
+                t.position ASC, 
+                t.creation_date ASC, 
+                t.local_id ASC",
         )?;
         let rows = stmt.query_map([queue_key], |row| {
             Ok(Task {
@@ -275,6 +312,14 @@ impl Database {
                 due_date: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(None),
                 repeats: serde_json::from_str(&row.get::<_, String>(10)?)
                     .unwrap_or(serde_json::Value::Bool(false)),
+                position: row.get(11)?,
+                section_key: row.get(12)?,
+                attachments: serde_json::from_str(&row.get::<_, String>(13)?).unwrap_or(None),
+                crossed: row.get::<_, i32>(14)? != 0,
+                num_comments: row.get(15)?,
+                has_subitems: row.get::<_, i32>(16)? != 0,
+                access: row.get(17)?,
+                add_comments: row.get::<_, i32>(18)? != 0,
             })
         })?;
 
@@ -295,14 +340,15 @@ impl Database {
         let creation_date_json = serde_json::to_string(&task.creation_date)?;
         let due_date_json = serde_json::to_string(&task.due_date)?;
         let repeats_json = serde_json::to_string(&task.repeats)?;
+        let attachments_json = serde_json::to_string(&task.attachments)?;
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments)
              VALUES (?1, ?2, 
                 (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
                 (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
-                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            (
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+            params![
                 &local_id,
                 &task.key,
                 &task.queue_key,
@@ -316,7 +362,15 @@ impl Database {
                 creation_date_json,
                 due_date_json,
                 repeats_json,
-            ),
+                &task.position,
+                &task.section_key,
+                attachments_json,
+                if task.crossed { 1 } else { 0 },
+                task.num_comments,
+                if task.has_subitems { 1 } else { 0 },
+                &task.access,
+                if task.add_comments { 1 } else { 0 },
+            ],
         )?;
 
         let transaction_id = Uuid::new_v4().to_string();

@@ -91,6 +91,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             creation_date: None,
             due_date: None,
             repeats: serde_json::Value::Bool(false),
+            section_key: None,
+            attachments: None,
+            crossed: false,
+            num_comments: Some(0),
+            has_subitems: false,
+            position: None,
+            access: Some("user".into()),
+            add_comments: true,
         };
         
         let safe_index = (*target_index).min(visible_tasks.len());

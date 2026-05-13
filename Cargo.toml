@@ -11,7 +11,7 @@ keywords = ["gqueues", "tui", "task-manager", "cli"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-gqueues-api-rs = { git = "https://github.com/SyntaxAndScale/gqueues-api-rs", tag = "v0.2.0" }
+gqueues-api-rs = { path = "../gqueues-api-rs" }
 anyhow = "1.0.102"
 chrono = { version = "0.4.44", features = ["serde"] }
 crossterm = "0.29.0"

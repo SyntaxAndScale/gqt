@@ -194,7 +194,11 @@ impl SyncEngine {
                     .create_task_with_idempotency(
                         &task.title,
                         task.queue_key.as_deref(),
+                        task.parent_key.as_deref(),
                         task.notes.as_deref(),
+                        task.tags.clone(),
+                        task.due_date.as_ref().and_then(|d| d.raw_date.as_deref()),
+                        false, // parse_quick_add_syntax
                         &idem_key,
                     )
                     .await

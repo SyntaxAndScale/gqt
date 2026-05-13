@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 
 fn save_new_task(app: &mut App, title: String, parent_key: Option<String>) -> anyhow::Result<()> {
     if let Some(queue) = app.selected_queue() {
+        let now_str = chrono::Utc::now().to_rfc3339();
         let new_task = gqueues_api_rs::models::Task {
             key: "".into(),
             title,
@@ -31,9 +32,20 @@ fn save_new_task(app: &mut App, title: String, parent_key: Option<String>) -> an
             subitems: None,
             tags: None,
             assignments: None,
-            creation_date: None,
+            creation_date: Some(gqueues_api_rs::models::DateInfo {
+                text: None,
+                raw: now_str,
+            }),
             due_date: None,
             repeats: serde_json::Value::Bool(false),
+            section_key: None,
+            attachments: None,
+            crossed: false,
+            num_comments: Some(0),
+            has_subitems: false,
+            position: None,
+            access: Some("user".into()),
+            add_comments: true,
         };
         let db = app.db.lock().unwrap();
         db.add_task_local(new_task)?;
@@ -323,6 +335,7 @@ async fn main() -> Result<()> {
                             if let Some(queue) = app.selected_queue() {
                                 let queue_key = queue.key.clone();
                                 app.status = format!("⏳ Creating task in {}...", queue.name);
+                                let now_str = chrono::Utc::now().to_rfc3339();
                                 let new_task = gqueues_api_rs::models::Task {
                                     key: "".into(),
                                     title: "New Local Task".into(),
@@ -333,9 +346,20 @@ async fn main() -> Result<()> {
                                     subitems: None,
                                     tags: None,
                                     assignments: None,
-                                    creation_date: None,
+                                    creation_date: Some(gqueues_api_rs::models::DateInfo {
+                                        text: None,
+                                        raw: now_str,
+                                    }),
                                     due_date: None,
                                     repeats: serde_json::Value::Bool(false),
+                                    section_key: None,
+                                    attachments: None,
+                                    crossed: false,
+                                    num_comments: Some(0),
+                                    has_subitems: false,
+                                    position: None,
+                                    access: Some("user".into()),
+                                    add_comments: true,
                                 };
                                 let db = app.db.lock().unwrap();
                                 match db.add_task_local(new_task) {

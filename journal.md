@@ -61,3 +61,10 @@
     - **Cancellation:** Configured `Esc` to cancel and discard the new task (deliberate departure from GQueues Web UI behavior).
     - **Stable Ordering:** Updated local database queries to ensure tasks are ordered by creation date, maintaining predictable list positions.
     - **Regression Testing:** Added a unit test suite to `src/keys.rs` to verify correct key-to-string conversion for Tab, Shift+Tab (BackTab), and Control sequences.
+
+## 2026-05-13
+- **Library Model Expansion:** Updated `gqueues-api-rs` (on branch `feature/expand-models`) to support all GQueues REST API fields, including `position`, `attachments`, `section_key`, and detailed assignment metadata.
+- **Task Ordering Fix:** Resolved an issue where new tasks would jump to the top of the list.
+    - **Position Field:** Integrated the API `position` field into the local `tasks` table and `gqt` models.
+    - **SQLite Sorting:** Updated `get_tasks` to use a robust `ORDER BY` clause: `CASE WHEN t.position IS NULL THEN 1 ELSE 0 END, t.position ASC, t.creation_date ASC`. This ensures synced tasks follow server ordering while new local tasks (with `NULL` position) correctly sort to the bottom.
+    - **Infrastructure:** Switched `gqt` to use the local version of the expanded library and migrated the database schema to store new fields.
