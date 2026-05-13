@@ -34,9 +34,9 @@ impl Default for KeybindingsConfig {
         // Task Addition
         b.insert("quick_add".into(), "q".into());
         b.insert("insert_task_below".into(), "i".into());
-        b.insert("insert_task_above".into(), "shift-i".into());
+        b.insert("insert_task_above".into(), "I".into());
         b.insert("add_task_bottom".into(), "o".into());
-        b.insert("add_task_top".into(), "shift-o".into());
+        b.insert("add_task_top".into(), "O".into());
         b.insert("add_subtask".into(), "s".into());
 
         // Task Editing
