@@ -75,10 +75,14 @@ impl Database {
                 has_subitems INTEGER NOT NULL DEFAULT 0,
                 access TEXT,
                 add_comments INTEGER NOT NULL DEFAULT 1,
+                local_order REAL,
                 FOREIGN KEY(queue_id) REFERENCES queues(local_id)
             )",
             [],
         )?;
+
+        // Ensure local_order column exists for existing databases
+        let _ = self.conn.execute("ALTER TABLE tasks ADD COLUMN local_order REAL", []);
 
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions (
@@ -204,11 +208,11 @@ impl Database {
         let attachments_json = serde_json::to_string(&task.attachments)?;
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments, local_order)
              VALUES (?1, ?2, 
                 (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
                 (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
-                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
              ON CONFLICT(remote_key) DO UPDATE SET
                 title = excluded.title,
                 notes = excluded.notes,
@@ -228,7 +232,8 @@ impl Database {
                 num_comments = excluded.num_comments,
                 has_subitems = excluded.has_subitems,
                 access = excluded.access,
-                add_comments = excluded.add_comments",
+                add_comments = excluded.add_comments,
+                local_order = excluded.local_order",
             params![
                 Uuid::new_v4().to_string(),
                 &task.key,
@@ -251,6 +256,7 @@ impl Database {
                 if task.has_subitems { 1 } else { 0 },
                 &task.access,
                 if task.add_comments { 1 } else { 0 },
+                &task.local_order,
             ],
         )?;
 
@@ -287,13 +293,15 @@ impl Database {
                 t.num_comments,
                 t.has_subitems,
                 t.access,
-                t.add_comments
+                t.add_comments,
+                t.local_order
              FROM tasks t
              JOIN queues q ON t.queue_id = q.local_id
              WHERE q.remote_key = ?1 OR q.local_id = ?1
              ORDER BY 
                 CASE WHEN t.position IS NULL THEN 1 ELSE 0 END, 
                 t.position ASC, 
+                t.local_order ASC,
                 t.creation_date ASC, 
                 t.local_id ASC",
         )?;
@@ -320,6 +328,7 @@ impl Database {
                 has_subitems: row.get::<_, i32>(16)? != 0,
                 access: row.get(17)?,
                 add_comments: row.get::<_, i32>(18)? != 0,
+                local_order: row.get(19)?,
             })
         })?;
 
@@ -343,11 +352,11 @@ impl Database {
         let attachments_json = serde_json::to_string(&task.attachments)?;
 
         self.conn.execute(
-            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments)
+            "INSERT INTO tasks (local_id, remote_key, queue_id, parent_key, title, notes, completed, last_modified, tags, assignments, creation_date, due_date, repeats, position, section_key, attachments, crossed, num_comments, has_subitems, access, add_comments, local_order)
              VALUES (?1, ?2, 
                 (SELECT local_id FROM queues WHERE remote_key IS ?3 OR local_id IS ?3), 
                 (SELECT local_id FROM tasks WHERE remote_key IS ?4 OR local_id IS ?4), 
-                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 &local_id,
                 &task.key,
@@ -370,6 +379,7 @@ impl Database {
                 if task.has_subitems { 1 } else { 0 },
                 &task.access,
                 if task.add_comments { 1 } else { 0 },
+                &task.local_order,
             ],
         )?;
 

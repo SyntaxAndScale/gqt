@@ -19,7 +19,12 @@ use crate::actions::Action;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-fn save_new_task(app: &mut App, title: String, parent_key: Option<String>) -> anyhow::Result<()> {
+fn save_new_task(
+    app: &mut App, 
+    title: String, 
+    parent_key: Option<String>, 
+    local_order: Option<f64>
+) -> anyhow::Result<()> {
     if let Some(queue) = app.selected_queue() {
         let now_str = chrono::Utc::now().to_rfc3339();
         let new_task = gqueues_api_rs::models::Task {
@@ -46,6 +51,7 @@ fn save_new_task(app: &mut App, title: String, parent_key: Option<String>) -> an
             position: None,
             access: Some("user".into()),
             add_comments: true,
+            local_order,
         };
         let db = app.db.lock().unwrap();
         db.add_task_local(new_task)?;
@@ -206,22 +212,24 @@ async fn main() -> Result<()> {
             let event = event::read()?;
             if let Event::Key(key) = event {
                 // 1. Handle Input Mode (Text Entry)
-                if let InputMode::CreatingTask { title, parent_key, target_index } = app.input_mode.clone() {
+                if let InputMode::CreatingTask { title, parent_key, target_index, local_order } = app.input_mode.clone() {
                     match key.code {
                         KeyCode::Enter => {
                             if !title.trim().is_empty() {
-                                save_new_task(&mut app, title, parent_key)?;
+                                save_new_task(&mut app, title, parent_key, Some(local_order))?;
                             }
                             app.input_mode = InputMode::Normal;
                         }
                         KeyCode::Tab => {
                             if !title.trim().is_empty() {
-                                save_new_task(&mut app, title, parent_key.clone())?;
+                                save_new_task(&mut app, title, parent_key.clone(), Some(local_order))?;
                                 // Start another one below
+                                let next_local_order = local_order + 1.0;
                                 app.input_mode = InputMode::CreatingTask {
                                     title: String::new(),
                                     parent_key,
                                     target_index: target_index + 1,
+                                    local_order: next_local_order,
                                 };
                                 app.task_state.select(Some(target_index + 1));
                             }
@@ -236,6 +244,7 @@ async fn main() -> Result<()> {
                                 title: new_title,
                                 parent_key,
                                 target_index,
+                                local_order,
                             };
                         }
                         KeyCode::Backspace => {
@@ -245,6 +254,7 @@ async fn main() -> Result<()> {
                                 title: new_title,
                                 parent_key,
                                 target_index,
+                                local_order,
                             };
                         }
                         _ => {}
@@ -267,6 +277,51 @@ async fn main() -> Result<()> {
                                 let visible_tasks = app.get_visible_tasks();
                                 let selected = app.task_state.selected().unwrap_or(0);
                                 
+                                // Calculate local_order
+                                let mut local_order = 0.0;
+                                if !app.tasks.is_empty() {
+                                    match action {
+                                        Action::AddTaskTop => {
+                                            let min_order = app.tasks.iter()
+                                                .filter_map(|t| t.local_order)
+                                                .fold(f64::INFINITY, f64::min);
+                                            local_order = if min_order == f64::INFINITY { 0.0 } else { min_order - 1.0 };
+                                        }
+                                        Action::AddTaskBottom => {
+                                            let max_order = app.tasks.iter()
+                                                .filter_map(|t| t.local_order)
+                                                .fold(f64::NEG_INFINITY, f64::max);
+                                            local_order = if max_order == f64::NEG_INFINITY { 100.0 } else { max_order + 1.0 };
+                                        }
+                                        Action::InsertTaskBelow => {
+                                            if let Some((task, _)) = visible_tasks.get(selected) {
+                                                let current_order = task.local_order.unwrap_or(0.0);
+                                                let next_order = visible_tasks.get(selected + 1)
+                                                    .and_then(|(t, _)| t.local_order);
+                                                local_order = match next_order {
+                                                    Some(next) => (current_order + next) / 2.0,
+                                                    None => current_order + 1.0,
+                                                };
+                                            }
+                                        }
+                                        Action::InsertTaskAbove => {
+                                            if let Some((task, _)) = visible_tasks.get(selected) {
+                                                let current_order = task.local_order.unwrap_or(0.0);
+                                                let prev_order = if selected > 0 {
+                                                    visible_tasks.get(selected - 1).and_then(|(t, _)| t.local_order)
+                                                } else {
+                                                    None
+                                                };
+                                                local_order = match prev_order {
+                                                    Some(prev) => (current_order + prev) / 2.0,
+                                                    None => current_order - 1.0,
+                                                };
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
                                 let (parent_key, target_index) = match action {
                                     Action::InsertTaskBelow => {
                                         if let Some((task, _)) = visible_tasks.get(selected) {
@@ -292,6 +347,7 @@ async fn main() -> Result<()> {
                                     title: String::new(),
                                     parent_key,
                                     target_index,
+                                    local_order,
                                 };
                                 app.task_state.select(Some(target_index));
                             }
@@ -360,6 +416,7 @@ async fn main() -> Result<()> {
                                     position: None,
                                     access: Some("user".into()),
                                     add_comments: true,
+                                    local_order: Some(1000.0), // Some high value for bottom
                                 };
                                 let db = app.db.lock().unwrap();
                                 match db.add_task_local(new_task) {

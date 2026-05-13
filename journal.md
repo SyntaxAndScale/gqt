@@ -68,3 +68,11 @@
     - **Position Field:** Integrated the API `position` field into the local `tasks` table and `gqt` models.
     - **SQLite Sorting:** Updated `get_tasks` to use a robust `ORDER BY` clause: `CASE WHEN t.position IS NULL THEN 1 ELSE 0 END, t.position ASC, t.creation_date ASC`. This ensures synced tasks follow server ordering while new local tasks (with `NULL` position) correctly sort to the bottom.
     - **Infrastructure:** Switched `gqt` to use the local version of the expanded library and migrated the database schema to store new fields.
+
+## 2026-05-14
+- **Sync Fix:** Resolved a "Serialization Error" during sync.
+    - **Data Types:** Corrected the `duration` field in `gqueues-api-rs` from `String` to `u32` to match the integer values returned by the GQueues API.
+- **UI Consistency:** Fixed a bug where new tasks would "disappear" from the immediate view after pressing 'Tab'.
+    - **Local Ordering:** Introduced a `local_order` floating-point field to the `tasks` table.
+    - **Interpolation:** Implemented an interpolation algorithm in `main.rs` to calculate a `local_order` value for new tasks based on their neighbors. This ensures they stay exactly where they were created until replaced by server-side `position` data.
+    - **Database Sorting:** Updated `get_tasks` to prioritize `position` (from server) and then `local_order`, with a robust fallback for `NULL` values.

@@ -65,7 +65,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let mut visible_tasks = app.get_visible_tasks();
     
     // Inject virtual task if creating
-    if let crate::app::InputMode::CreatingTask { title, parent_key, target_index } = &app.input_mode {
+    if let crate::app::InputMode::CreatingTask { title, parent_key, target_index, local_order } = &app.input_mode {
         // Calculate depth for the virtual task
         let depth = if let Some(pk) = parent_key {
             // Find parent's depth and add 1
@@ -99,6 +99,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             position: None,
             access: Some("user".into()),
             add_comments: true,
+            local_order: Some(*local_order),
         };
         
         let safe_index = (*target_index).min(visible_tasks.len());

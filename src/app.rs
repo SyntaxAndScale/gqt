@@ -15,7 +15,7 @@ pub enum Pane {
 }
 
 /// Represents the current input mode of the application.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InputMode {
     Normal,
     /// Creating a new task inline.
@@ -24,6 +24,8 @@ pub enum InputMode {
         parent_key: Option<String>,
         /// The index in the visible list where the input field should appear.
         target_index: usize,
+        /// The desired local order for the new task.
+        local_order: f64,
     },
 }
 
