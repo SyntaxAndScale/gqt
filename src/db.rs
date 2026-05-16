@@ -340,7 +340,7 @@ impl Database {
     }
 
     /// Saves a task locally and logs a pending transaction for the Sync Engine.
-    pub fn add_task_local(&self, mut task: Task) -> Result<Task> {
+    pub fn add_task_local(&self, mut task: Task, parse_quick_add: bool) -> Result<Task> {
         let local_id = Uuid::new_v4().to_string();
         task.key = format!("local-{}", local_id);
         let now = Utc::now().to_rfc3339();
@@ -385,7 +385,12 @@ impl Database {
 
         let transaction_id = Uuid::new_v4().to_string();
         let idempotency_key = Uuid::new_v4().to_string();
-        let operation = serde_json::to_string(&crate::models::Operation::Create(task.clone()))?;
+        let op = if parse_quick_add {
+            crate::models::Operation::CreateQuick(task.clone())
+        } else {
+            crate::models::Operation::Create(task.clone())
+        };
+        let operation = serde_json::to_string(&op)?;
         self.conn.execute(
             "INSERT INTO transactions (id, operation, timestamp, sync_status, idempotency_key)
              VALUES (?1, ?2, ?3, ?4, ?5)",

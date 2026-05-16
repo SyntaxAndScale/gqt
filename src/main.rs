@@ -7,17 +7,21 @@ mod models;
 mod sync;
 mod ui;
 mod wizard;
+mod commands;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode};
 use crate::app::{App, InputMode, NavEntry, Pane};
-use crate::config::load_config;
+use crate::config::{load_config, Settings};
 use crate::db::Database;
 use crate::keys::KeyHandler;
 use crate::sync::{SyncCommand, SyncEngine, SyncEvent};
 use crate::actions::Action;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use clap::Parser;
+use crate::commands::Cli;
+use std::path::PathBuf;
 
 fn save_new_task(
     app: &mut App, 
@@ -29,7 +33,7 @@ fn save_new_task(
         let now_str = chrono::Utc::now().to_rfc3339();
         let new_task = gqueues_api_rs::models::Task {
             key: "".into(),
-            title,
+            title: Some(title),
             notes: None,
             completed: false,
             queue_key: Some(queue.key),
@@ -54,15 +58,14 @@ fn save_new_task(
             local_order,
         };
         let db = app.db.lock().unwrap();
-        db.add_task_local(new_task)?;
+        db.add_task_local(new_task, false)?;
         app.status = "✅ Task created".into();
     }
     app.reload_tasks();
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn init_app() -> Result<(Settings, PathBuf, Database, gqueues_api_rs::GqueuesClient)> {
     // Initialize logging
     let _ = simplelog::WriteLogger::init(
         simplelog::LevelFilter::Debug,
@@ -81,10 +84,48 @@ async fn main() -> Result<()> {
 
     // Initialize API client
     let client = gqueues_api_rs::GqueuesClient::new(
-        settings.gqueues.api_endpoint.unwrap_or_else(|| "https://api.gqueues.com/beta".to_string()),
-        settings.gqueues.access_token.unwrap_or_default(),
+        settings.gqueues.api_endpoint.clone().unwrap_or_else(|| "https://api.gqueues.com/beta".to_string()),
+        settings.gqueues.access_token.clone().unwrap_or_default(),
     );
 
+    Ok((settings, db_path, db, client))
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    let (settings, db_path, db, client) = match init_app() {
+        Ok(vals) => vals,
+        Err(e) => {
+            eprintln!("❌ Initialization error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Handle CLI commands
+    if let Some(title) = cli.input {
+        return commands::add::handle_add(&db, title).await;
+    }
+
+    if let Some(cmd) = cli.command {
+        match cmd {
+            commands::Commands::Add { title } => {
+                return commands::add::handle_add(&db, title).await;
+            }
+        }
+    }
+
+    // Launch TUI if no CLI command
+    run_tui(settings, db_path, db, client).await
+}
+
+async fn run_tui(
+    settings: Settings, 
+    db_path: PathBuf, 
+    db: Database, 
+    client: gqueues_api_rs::GqueuesClient
+) -> Result<()> {
     // Initialize app state
     let mut app = App::new(
         client.clone(),
@@ -394,7 +435,7 @@ async fn main() -> Result<()> {
                                 let now_str = chrono::Utc::now().to_rfc3339();
                                 let new_task = gqueues_api_rs::models::Task {
                                     key: "".into(),
-                                    title: "New Local Task".into(),
+                                    title: Some("New Local Task".into()),
                                     notes: Some("Created offline".into()),
                                     completed: false,
                                     queue_key: Some(queue_key),
@@ -419,7 +460,7 @@ async fn main() -> Result<()> {
                                     local_order: Some(1000.0), // Some high value for bottom
                                 };
                                 let db = app.db.lock().unwrap();
-                                match db.add_task_local(new_task) {
+                                match db.add_task_local(new_task, false) {
                                     Ok(task) => {
                                         app.tasks.push(task);
                                         let visible_tasks = app.get_visible_tasks();

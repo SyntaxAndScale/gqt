@@ -80,7 +80,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         // Create a dummy task for rendering
         let dummy_task = gqueues_api_rs::models::Task {
             key: "virtual-creating".into(),
-            title: format!("{}_", title), // Show cursor
+            title: Some(format!("{}_", title)), // Show cursor
             notes: None,
             completed: false,
             queue_key: None,
@@ -132,7 +132,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
             ListItem::new(ratatui::text::Line::from(vec![
                 ratatui::text::Span::raw(format!("{}{} {} ", indent, expand_icon, status_icon)),
-                ratatui::text::Span::raw(clean_html(&task.title)),
+                ratatui::text::Span::raw(clean_html(task.title.as_deref().unwrap_or(""))),
                 ratatui::text::Span::raw(unsynced_icon),
             ]))
         })
@@ -158,7 +158,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if let Some(task) = app.selected_task() {
         // 1. Title (Bright White / Bold)
         details_text.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-            clean_html(&task.title),
+            clean_html(task.title.as_deref().unwrap_or("")),
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .fg(Color::Rgb(255, 255, 255)),
@@ -187,7 +187,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             (task.repeats.is_object() || 
              task.repeats.as_bool().unwrap_or(false) || 
              (task.repeats.is_string() && !task.repeats.as_str().unwrap_or("").is_empty())))
-            || task.title.contains('🔁');
+            || task.title.as_deref().unwrap_or("").contains('🔁');
 
         if is_repeating {
             meta_spans.push(ratatui::text::Span::styled("🔁 ", Style::default().fg(Color::Green)));
@@ -221,7 +221,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         if let Some(ref assignments) = task.assignments
             && !assignments.is_empty()
         {
-            let assignee_names: Vec<String> = assignments.iter().map(|a| a.name.clone()).collect();
+            let assignee_names: Vec<String> = assignments.iter()
+                .filter_map(|a| a.name.clone())
+                .collect();
             meta_spans.push(ratatui::text::Span::raw("👤"));
             meta_spans.push(ratatui::text::Span::raw(assignee_names.join(", ")));
         }

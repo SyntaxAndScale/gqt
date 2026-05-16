@@ -177,50 +177,61 @@ impl SyncEngine {
         for (tx_id, op_json, idem_key) in pending {
             let operation: Operation = serde_json::from_str(&op_json)?;
 
-            if let Operation::Create(task) = operation {
-                let _ = self
-                    .tx
-                    .send(SyncEvent::InProgress {
-                        message: format!("⏳ Syncing: {}", task.title),
-                    })
-                    .await;
-                log::info!(
-                    "Sync Engine: Promoting local task '{}' (Local Key: {}) to GQueues",
-                    task.title,
-                    task.key
-                );
-                match self
-                    .client
-                    .create_task_with_idempotency(
-                        &task.title,
-                        task.queue_key.as_deref(),
-                        task.parent_key.as_deref(),
-                        task.notes.as_deref(),
-                        task.tags.clone(),
-                        task.due_date.as_ref().and_then(|d| d.raw_date.as_deref()),
-                        false, // parse_quick_add_syntax
-                        &idem_key,
-                    )
-                    .await
-                {
-                    Ok(remote_task) => {
-                        log::info!(
-                            "Sync Engine: Successfully promoted '{}'. New Remote Key: {}",
-                            task.title,
-                            remote_task.key
-                        );
-                        let db = self.db.lock().unwrap();
-                        db.update_task_remote_key(&task.key, &remote_task.key)?;
-                        db.mark_transaction_synced(&tx_id)?;
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "Sync Engine: Failed to promote task '{}': {}",
-                            task.title,
-                            e
-                        );
-                        return Err(anyhow!(e));
-                    }
+            let (task, is_quick_add) = match operation {
+                Operation::Create(t) => (t, false),
+                Operation::CreateQuick(t) => (t, true),
+                _ => {
+                    log::warn!("Sync Engine: Skipping unimplemented operation: {:?}", operation);
+                    let db = self.db.lock().unwrap();
+                    db.mark_transaction_synced(&tx_id)?;
+                    continue;
+                }
+            };
+
+            let title = task.title.as_deref().unwrap_or("");
+            let _ = self
+                .tx
+                .send(SyncEvent::InProgress {
+                    message: format!("⏳ Syncing: {}", title),
+                })
+                .await;
+            log::info!(
+                "Sync Engine: Promoting local task '{}' (Local Key: {}, Quick Add: {}) to GQueues",
+                title,
+                task.key,
+                is_quick_add
+            );
+            match self
+                .client
+                .create_task_with_idempotency(
+                    title,
+                    task.queue_key.as_deref(),
+                    task.parent_key.as_deref(),
+                    task.notes.as_deref(),
+                    task.tags.clone(),
+                    task.due_date.as_ref().and_then(|d| d.raw_date.as_deref()),
+                    is_quick_add,
+                    &idem_key,
+                )
+                .await
+            {
+                Ok(remote_task) => {
+                    log::info!(
+                        "Sync Engine: Successfully promoted '{}'. New Remote Key: {}",
+                        remote_task.title.as_deref().unwrap_or(""),
+                        remote_task.key
+                    );
+                    let db = self.db.lock().unwrap();
+                    db.update_task_remote_key(&task.key, &remote_task.key)?;
+                    db.mark_transaction_synced(&tx_id)?;
+                }
+                Err(e) => {
+                    log::error!(
+                        "Sync Engine: Failed to promote task '{}': {}",
+                        title,
+                        e
+                    );
+                    return Err(anyhow!(e));
                 }
             }
         }

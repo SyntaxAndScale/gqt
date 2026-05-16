@@ -33,6 +33,12 @@ SQLite acts as the single source of truth for the UI. It maintains:
 - `tasks`: Full task details and hierarchical relationships.
 - `transactions`: An append-only log of local modifications awaiting sync.
 
+### 5. CLI Layer (`src/commands/`)
+The CLI provides a lightweight interface for rapid task entry:
+- **Argument Parsing:** Uses `clap` to handle commands and flags.
+- **Quick Add:** Leverages GQueues Quick Add Syntax by setting the `parseQuickAddSyntax` flag in API requests.
+- **Workflow:** Saves tasks to the local database, allowing the background `SyncEngine` to handle the actual API communication asynchronously.
+
 ## API Communication
 All communication with GQueues is handled by the `gqueues-api-rs` library.
 - **Base Endpoint:** `https://api.gqueues.com/v0`

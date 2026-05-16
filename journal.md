@@ -76,3 +76,9 @@
     - **Local Ordering:** Introduced a `local_order` floating-point field to the `tasks` table.
     - **Interpolation:** Implemented an interpolation algorithm in `main.rs` to calculate a `local_order` value for new tasks based on their neighbors. This ensures they stay exactly where they were created until replaced by server-side `position` data.
     - **Database Sorting:** Updated `get_tasks` to prioritize `position` (from server) and then `local_order`, with a robust fallback for `NULL` values.
+
+## 2026-05-15
+- **CLI Infrastructure:** Initiated work on the command-line interface to support rapid task creation.
+    - **Branching:** Created `feature/cli-task-creation`.
+    - **Dependencies:** Added `clap` 4.6.1 for robust argument parsing and future command extensibility.
+    - **Plan:** Formulated a strategy to support GQueues Quick Add Syntax by introducing a `CreateQuick` variant to the synchronization `Operation` model.

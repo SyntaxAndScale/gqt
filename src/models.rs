@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
     Create(Task),
+    CreateQuick(Task),
     Update(Task),
     Delete(String),   // key
     Complete(String), // key

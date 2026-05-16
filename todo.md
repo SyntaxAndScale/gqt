@@ -101,6 +101,12 @@
         </div>
     </div>
 
+- [ ] Feature: CLI Task Creation. Enable task creation via the CLI using Quick Add Syntax (e.g., `gqt -i "Task title"`).
+    - [ ] Add `clap` for CLI argument parsing.
+    - [ ] Update `Operation` enum and Sync Engine to support `parseQuickAddSyntax`.
+    - [ ] Implement `gqt -i` command.
+    - [ ] Refactor `main.rs` for dual-mode execution.
+
 ## TODO Before Open Sourcing
 - [x] Implement advanced task creation shortcuts ('i', 'Shift+i', 'o', 'Shift+o')
 - [ ] Future: support specification of due dates using 'due on' text parsing
