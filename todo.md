@@ -59,7 +59,7 @@
 - [x] If a task displayed in the center panel has sub-tasks, it should include a expand/collapse arrow that prepends the "[ ]" of the task. Pressing the spacebar on the task should expand/collapse to show the sub-tasks.
 - [x] When navigating the category list, make it so that the space bar can be pressed to expand/collapse a category
 - [ ] Implement the shortcut keys for hiding/showing the left and right panels as VSCode uses for the left and right side panels.
-- [x] Implment a shortcut key press to 'Sync now' which should basically force a sync between the local database and the gqueues web service.
+- [ ] Implment a shortcut key press to 'Sync now' which should basically force a sync between the local database and the gqueues web service.
 - [x] Re-design and update formatting of task details
 - [ ] Re-design and update the formatting of the help screen '?'
 - [ ] When first loading gqt, the tasks from the Inbox queue are shown in the center pane (correctly) but the navigation pane should also have the Inbox queue selected. Currently it shows the Category being selected. It should expand the necessary Category (if applicable) and show the Inbox queue selected.
@@ -101,13 +101,13 @@
         </div>
     </div>
 
-- [ ] Feature: CLI Task Creation. Enable task creation via the CLI using Quick Add Syntax (e.g., `gqt -i "Task title"`).
-    - [ ] Add `clap` for CLI argument parsing.
-    - [ ] Update `Operation` enum and Sync Engine to support `parseQuickAddSyntax`.
-    - [ ] Implement `gqt -i` command.
-    - [ ] Refactor `main.rs` for dual-mode execution.
+- [x] Feature: CLI Task Creation. Enable task creation via the CLI using Quick Add Syntax (e.g., `gqt -i "Task title"`).
+    - [x] Add `clap` for CLI argument parsing.
+    - [x] Update `Operation` enum and Sync Engine to support `parseQuickAddSyntax`.
+    - [x] Implement `gqt -i` command.
+    - [x] Refactor `main.rs` for dual-mode execution.
+- [ ] Feature: Enhance CLI output to include the task name and the finalized URL of the newly created task.
 
-## TODO Before Open Sourcing
-- [x] Implement advanced task creation shortcuts ('i', 'Shift+i', 'o', 'Shift+o')
+- [ ] Implement advanced task creation shortcuts ('i', 'Shift+i', 'o', 'Shift+o')
 - [ ] Future: support specification of due dates using 'due on' text parsing
 - [ ] Choose and apply a license based on what is legally viable by what the imported crates use

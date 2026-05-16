@@ -25,6 +25,21 @@ cd gqt
 cargo run --release
 ```
 
+## Usage
+
+### TUI Mode
+Simply run the binary to launch the full terminal interface:
+```bash
+gqt
+```
+
+### CLI Quick Add
+Create a task instantly from your terminal using GQueues Quick Add Syntax:
+```bash
+gqt -i "Buy milk tomorrow @5pm #errands [Personal] :: Remember the organic one"
+```
+The CLI will save the task locally and immediately sync it with the GQueues API.
+
 ## Setup
 
 On the first launch, `gqt` will guide you through an interactive setup wizard:

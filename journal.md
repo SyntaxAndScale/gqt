@@ -75,10 +75,14 @@
 - **UI Consistency:** Fixed a bug where new tasks would "disappear" from the immediate view after pressing 'Tab'.
     - **Local Ordering:** Introduced a `local_order` floating-point field to the `tasks` table.
     - **Interpolation:** Implemented an interpolation algorithm in `main.rs` to calculate a `local_order` value for new tasks based on their neighbors. This ensures they stay exactly where they were created until replaced by server-side `position` data.
-    - **Database Sorting:** Updated `get_tasks` to prioritize `position` (from server) and then `local_order`, with a robust fallback for `NULL` values.
+    - **Database Sorting:** Updated `get_tasks` to prioritize `position` (from server) and then `local_order`, with a fallback for `NULL` values.
 
-## 2026-05-15
-- **CLI Infrastructure:** Initiated work on the command-line interface to support rapid task creation.
-    - **Branching:** Created `feature/cli-task-creation`.
-    - **Dependencies:** Added `clap` 4.6.1 for robust argument parsing and future command extensibility.
-    - **Plan:** Formulated a strategy to support GQueues Quick Add Syntax by introducing a `CreateQuick` variant to the synchronization `Operation` model.
+## 2026-05-16
+- **CLI Task Creation:** Implemented rapid task entry via the command line with GQueues Quick Add Syntax support.
+    - **Infrastructure:** Integrated `clap` 4.6.1 for argument parsing and established a modular `src/commands` structure.
+    - **Quick Add:** Introduced `Operation::CreateQuick` to trigger server-side syntax parsing (`parseQuickAddSyntax=True`) in the Sync Engine.
+    - **Dual-Mode Boot:** Refactored `main.rs` to support both TUI and CLI execution, sharing core initialization logic.
+    - **Immediate Sync:** Enabled automatic background synchronization immediately after CLI task entry.
+    - **User Feedback:** Integrated `indicatif` for dynamic terminal spinners and provided clear status updates, including a versioned header.
+    - **UI Refinement:** Ensured the CLI clears the spinner before final confirmation for a clean output.
+    - **Type Safety:** Resolved numerous model mismatches across `src/ui.rs`, `src/sync.rs`, and `src/main.rs` following library updates.
