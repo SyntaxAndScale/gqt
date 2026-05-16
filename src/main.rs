@@ -18,6 +18,7 @@ use crate::keys::KeyHandler;
 use crate::sync::{SyncCommand, SyncEngine, SyncEvent};
 use crate::actions::Action;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::sync::mpsc;
 use clap::Parser;
 use crate::commands::Cli;
@@ -103,47 +104,70 @@ async fn main() -> Result<()> {
         }
     };
 
+    let client_shared = Arc::new(client);
+    let db_shared = Arc::new(Mutex::new(db));
+
     // Handle CLI commands
     if let Some(title) = cli.input {
-        return commands::add::handle_add(&db, title).await;
+        return commands::add::handle_add(client_shared, db_shared, title).await;
     }
 
     if let Some(cmd) = cli.command {
         match cmd {
             commands::Commands::Add { title } => {
-                return commands::add::handle_add(&db, title).await;
+                return commands::add::handle_add(client_shared, db_shared, title).await;
             }
         }
     }
 
     // Launch TUI if no CLI command
-    run_tui(settings, db_path, db, client).await
+    // Note: We need to take ownership back from Arc if we want to pass Database directly, 
+    // but run_tui and App expect Database to be wrapped in Arc<Mutex> already or it will wrap it.
+    // Actually, App::new takes Database directly. Let's fix that.
+    
+    // Re-wrapping or refactoring run_tui to take shared types
+    run_tui_shared(settings, db_path, db_shared, client_shared).await
 }
 
-async fn run_tui(
+async fn run_tui_shared(
     settings: Settings, 
     db_path: PathBuf, 
-    db: Database, 
-    client: gqueues_api_rs::GqueuesClient
+    db: Arc<Mutex<Database>>, 
+    client: Arc<gqueues_api_rs::GqueuesClient>
 ) -> Result<()> {
     // Initialize app state
-    let mut app = App::new(
-        client.clone(),
-        db,
-        crate::config::get_config_path("config.toml")?,
+    let mut app = App {
+        _client: client.clone(),
+        db: db.clone(),
+        active_queue_key: Arc::new(Mutex::new(None)),
+        expanded_categories: std::collections::HashSet::new(),
+        expanded_tasks: std::collections::HashSet::new(),
+        keybindings: settings.keybindings.clone(),
+        queues: Vec::new(),
+        tasks: Vec::new(),
+        nav_state: ratatui::widgets::ListState::default(),
+        task_state: ratatui::widgets::ListState::default(),
+        detail_scroll: 0,
+        show_help: false,
+        last_synced: None,
+        config_path: crate::config::get_config_path("config.toml")?,
         db_path,
-        settings.keybindings.clone(),
-    );
+        active_pane: Pane::Queues,
+        input_mode: InputMode::Normal,
+        running: true,
+        status: "Ready".into(),
+    };
+    app.nav_state.select(Some(0));
+    app.task_state.select(Some(0));
 
     // Initialize Sync Engine
     let (sync_tx, mut sync_rx) = mpsc::channel(100);
     let (cmd_tx, cmd_rx) = mpsc::channel(100);
     let active_queue_key = app.active_queue_key.clone();
-    let db_shared = app.db.clone();
 
     let mut engine = SyncEngine::new(
-        Arc::new(client),
-        db_shared,
+        client.clone(),
+        db.clone(),
         active_queue_key,
         sync_tx,
         cmd_rx,
@@ -164,8 +188,8 @@ async fn run_tui(
 
     // Initial data load
     {
-        let db = app.db.lock().unwrap();
-        if let Ok(queues) = db.get_queues() {
+        let db_locked = app.db.lock().unwrap();
+        if let Ok(queues) = db_locked.get_queues() {
             app.queues = queues;
         }
 
@@ -182,7 +206,7 @@ async fn run_tui(
         });
 
         if let Some(key) = key_to_load
-            && let Ok(tasks) = db.get_tasks(&key)
+            && let Ok(tasks) = db_locked.get_tasks(&key)
         {
             app.tasks = tasks;
             // Update active key if we auto-selected inbox
@@ -211,8 +235,8 @@ async fn run_tui(
                         app.status = "✅ Sync successful".into();
                     }
                     // Reload data from DB
-                    let db = app.db.lock().unwrap();
-                    if let Ok(queues) = db.get_queues() {
+                    let db_locked = app.db.lock().unwrap();
+                    if let Ok(queues) = db_locked.get_queues() {
                         app.queues = queues;
                     }
 
@@ -222,7 +246,7 @@ async fn run_tui(
                     };
 
                     if let Some(key) = active_key
-                        && let Ok(tasks) = db.get_tasks(&key)
+                        && let Ok(tasks) = db_locked.get_tasks(&key)
                     {
                         app.tasks = tasks;
                     }
@@ -230,8 +254,8 @@ async fn run_tui(
                 SyncEvent::Error(e) => {
                     app.status = format!("❌ {}", e);
                     // Still reload data because some push operations might have succeeded
-                    let db = app.db.lock().unwrap();
-                    if let Ok(queues) = db.get_queues() {
+                    let db_locked = app.db.lock().unwrap();
+                    if let Ok(queues) = db_locked.get_queues() {
                         app.queues = queues;
                     }
 
@@ -241,7 +265,7 @@ async fn run_tui(
                     };
 
                     if let Some(key) = active_key
-                        && let Ok(tasks) = db.get_tasks(&key)
+                        && let Ok(tasks) = db_locked.get_tasks(&key)
                     {
                         app.tasks = tasks;
                     }
@@ -413,8 +437,8 @@ async fn run_tui(
                                                 *active = Some(queue_key.clone());
                                             }
                                             app.status = format!("⏳ Loading {}...", queue.name);
-                                            let db = app.db.lock().unwrap();
-                                            match db.get_tasks(&queue_key) {
+                                            let db_locked = app.db.lock().unwrap();
+                                            match db_locked.get_tasks(&queue_key) {
                                                 Ok(tasks) => {
                                                     app.tasks = tasks;
                                                     app.task_state.select(Some(0));
@@ -459,8 +483,8 @@ async fn run_tui(
                                     add_comments: true,
                                     local_order: Some(1000.0), // Some high value for bottom
                                 };
-                                let db = app.db.lock().unwrap();
-                                match db.add_task_local(new_task, false) {
+                                let db_locked = app.db.lock().unwrap();
+                                match db_locked.add_task_local(new_task, false) {
                                     Ok(task) => {
                                         app.tasks.push(task);
                                         let visible_tasks = app.get_visible_tasks();
@@ -539,8 +563,8 @@ async fn run_tui(
                                 let mut active = app.active_queue_key.lock().unwrap();
                                 *active = Some(inbox_key.clone());
                                 app.status = "⏳ Jumping to Inbox...".into();
-                                let db = app.db.lock().unwrap();
-                                if let Ok(tasks) = db.get_tasks(&inbox_key) {
+                                let db_locked = app.db.lock().unwrap();
+                                if let Ok(tasks) = db_locked.get_tasks(&inbox_key) {
                                     app.tasks = tasks;
                                     app.task_state.select(Some(0));
                                     app.active_pane = Pane::Tasks;

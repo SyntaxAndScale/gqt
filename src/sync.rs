@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
-/// Events emitted by the SyncEngine to the main TUI loop.
+/// Events emitted by the SyncEngine.
+#[derive(Debug, Clone)]
 pub enum SyncEvent {
     /// Indicates an operation is currently in progress with a descriptive message.
     InProgress { message: String },
@@ -18,6 +19,25 @@ pub enum SyncEvent {
     Complete { unfetched: usize, total: usize },
     /// Indicates a non-fatal error occurred during synchronization.
     Error(String),
+}
+
+/// A trait for reporting synchronization progress.
+pub trait ProgressReporter: Send + Sync {
+    fn report(&self, event: SyncEvent);
+}
+
+/// A reporter that sends events through an mpsc channel.
+pub struct ChannelReporter {
+    pub tx: mpsc::Sender<SyncEvent>,
+}
+
+impl ProgressReporter for ChannelReporter {
+    fn report(&self, event: SyncEvent) {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(event).await;
+        });
+    }
 }
 
 /// Commands sent from the TUI to the background SyncEngine.
@@ -31,12 +51,12 @@ pub struct SyncEngine {
     client: Arc<GqueuesClient>,
     db: Arc<Mutex<Database>>,
     active_queue_key: Arc<Mutex<Option<String>>>,
-    tx: mpsc::Sender<SyncEvent>,
+    reporter: Option<Arc<dyn ProgressReporter>>,
     cmd_rx: mpsc::Receiver<SyncCommand>,
 }
 
 impl SyncEngine {
-    /// Creates a new SyncEngine instance.
+    /// Creates a new SyncEngine instance for TUI.
     pub fn new(
         client: Arc<GqueuesClient>,
         db: Arc<Mutex<Database>>,
@@ -48,9 +68,27 @@ impl SyncEngine {
             client,
             db,
             active_queue_key,
-            tx,
+            reporter: Some(Arc::new(ChannelReporter { tx })),
             cmd_rx,
         }
+    }
+
+    /// Creates a minimal SyncEngine for one-off operations (like CLI).
+    pub fn new_minimal(client: Arc<GqueuesClient>, db: Arc<Mutex<Database>>) -> Self {
+        let (_, cmd_rx) = mpsc::channel(1);
+        Self {
+            client,
+            db,
+            active_queue_key: Arc::new(Mutex::new(None)),
+            reporter: None,
+            cmd_rx,
+        }
+    }
+
+    /// Sets a progress reporter for the engine.
+    pub fn with_reporter(mut self, reporter: Arc<dyn ProgressReporter>) -> Self {
+        self.reporter = Some(reporter);
+        self
     }
 
     /// The main execution loop for the background sync task.
@@ -86,12 +124,11 @@ impl SyncEngine {
 
     /// Handles a single synchronization cycle, including push and pull phases.
     async fn handle_sync_cycle(&self, retry_count: &mut u32) -> Duration {
-        let _ = self
-            .tx
-            .send(SyncEvent::InProgress {
+        if let Some(ref r) = self.reporter {
+            r.report(SyncEvent::InProgress {
                 message: "⏳ Sync in progress...".into(),
-            })
-            .await;
+            });
+        }
         match self.sync_cycle().await {
             Ok(stats) => {
                 *retry_count = 0;
@@ -100,13 +137,12 @@ impl SyncEngine {
                     stats.0,
                     stats.1
                 );
-                let _ = self
-                    .tx
-                    .send(SyncEvent::Complete {
+                if let Some(ref r) = self.reporter {
+                    r.report(SyncEvent::Complete {
                         unfetched: stats.0,
                         total: stats.1,
-                    })
-                    .await;
+                    });
+                }
 
                 // If we still have unfetched queues, run again sooner
                 if stats.0 > 0 {
@@ -120,23 +156,21 @@ impl SyncEngine {
                     match gq_err {
                         GqueuesError::RateLimited(dur) => {
                             log::warn!("Rate limited. Waiting for {:?}", dur);
-                            let _ = self
-                                .tx
-                                .send(SyncEvent::Error(format!(
+                            if let Some(ref r) = self.reporter {
+                                r.report(SyncEvent::Error(format!(
                                     "Rate limited. Waiting {:?}...",
                                     dur
-                                )))
-                                .await;
+                                )));
+                            }
                             *dur
                         }
                         _ => {
                             *retry_count += 1;
                             log::error!("Sync cycle failed: {}", e);
                             let backoff = Duration::from_secs(2u64.pow(*retry_count).clamp(5, 60));
-                            let _ = self
-                                .tx
-                                .send(SyncEvent::Error(format!("Sync error: {}", e)))
-                                .await;
+                            if let Some(ref r) = self.reporter {
+                                r.report(SyncEvent::Error(format!("Sync error: {}", e)));
+                            }
                             backoff
                         }
                     }
@@ -144,17 +178,16 @@ impl SyncEngine {
                     *retry_count += 1;
                     log::error!("Sync cycle failed with non-Gqueues error: {}", e);
                     let backoff = Duration::from_secs(2u64.pow(*retry_count).clamp(5, 60));
-                    let _ = self
-                        .tx
-                        .send(SyncEvent::Error(format!("Sync error: {}", e)))
-                        .await;
+                    if let Some(ref r) = self.reporter {
+                        r.report(SyncEvent::Error(format!("Sync error: {}", e)));
+                    }
                     backoff
                 }
             }
         }
     }
 
-    async fn sync_cycle(&self) -> Result<(usize, usize)> {
+    pub async fn sync_cycle(&self) -> Result<(usize, usize)> {
         self.push_pending_changes().await?;
         self.pull_remote_changes().await?;
 
@@ -168,7 +201,7 @@ impl SyncEngine {
     }
 
     /// Pushes local transactions to the remote GQueues API.
-    async fn push_pending_changes(&self) -> Result<()> {
+    pub async fn push_pending_changes(&self) -> Result<()> {
         let pending = {
             let db = self.db.lock().unwrap();
             db.get_pending_transactions()?
@@ -189,12 +222,11 @@ impl SyncEngine {
             };
 
             let title = task.title.as_deref().unwrap_or("");
-            let _ = self
-                .tx
-                .send(SyncEvent::InProgress {
+            if let Some(ref r) = self.reporter {
+                r.report(SyncEvent::InProgress {
                     message: format!("⏳ Syncing: {}", title),
-                })
-                .await;
+                });
+            }
             log::info!(
                 "Sync Engine: Promoting local task '{}' (Local Key: {}, Quick Add: {}) to GQueues",
                 title,
@@ -239,13 +271,12 @@ impl SyncEngine {
     }
 
     /// Pulls remote changes from the API and reconciles them with the local database.
-    async fn pull_remote_changes(&self) -> Result<()> {
-        let _ = self
-            .tx
-            .send(SyncEvent::InProgress {
+    pub async fn pull_remote_changes(&self) -> Result<()> {
+        if let Some(ref r) = self.reporter {
+            r.report(SyncEvent::InProgress {
                 message: "⏳ Fetching queue metadata...".into(),
-            })
-            .await;
+            });
+        }
         let api_queues = self.client.get_queues().await.map_err(|e| anyhow!(e))?;
 
         let active_key = {
@@ -311,12 +342,11 @@ impl SyncEngine {
             };
 
             if let Some(q) = stale_queue {
-                let _ = self
-                    .tx
-                    .send(SyncEvent::InProgress {
+                if let Some(ref r) = self.reporter {
+                    r.report(SyncEvent::InProgress {
                         message: format!("⏳ Syncing: {}", q.name),
-                    })
-                    .await;
+                    });
+                }
                 log::debug!("Background Sync: Checking stale queue: {}", q.name);
                 let tasks = self
                     .client
@@ -334,12 +364,11 @@ impl SyncEngine {
             }
         } else {
             for queue in modified_queues {
-                let _ = self
-                    .tx
-                    .send(SyncEvent::InProgress {
+                if let Some(ref r) = self.reporter {
+                    r.report(SyncEvent::InProgress {
                         message: format!("⏳ Syncing: {}", queue.name),
-                    })
-                    .await;
+                    });
+                }
                 log::info!(
                     "Syncing tasks for queue: {} (Key: {})",
                     queue.name,
