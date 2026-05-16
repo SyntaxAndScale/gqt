@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "gqt"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "anyhow",
  "chrono",
@@ -797,7 +797,8 @@ dependencies = [
 
 [[package]]
 name = "gqueues-api-rs"
-version = "0.2.2"
+version = "0.2.3"
+source = "git+https://github.com/SyntaxAndScale/gqueues-api-rs?tag=v.0.2.3#18c96db772cce6eaddfa635977bf4de254109393"
 dependencies = [
  "chrono",
  "log",
