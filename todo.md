@@ -106,6 +106,7 @@
     - [x] Update `Operation` enum and Sync Engine to support `parseQuickAddSyntax`.
     - [x] Implement `gqt -i` command.
     - [x] Refactor `main.rs` for dual-mode execution.
+- [x] Fix: Startup flow and wizard integration. Correctly trigger wizard in TUI mode if config is missing, and show helpful error in CLI mode.
 - [ ] Feature: Enhance CLI output to include the task name and the finalized URL of the newly created task.
 
 - [ ] Implement advanced task creation shortcuts ('i', 'Shift+i', 'o', 'Shift+o')

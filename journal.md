@@ -86,3 +86,9 @@
     - **User Feedback:** Integrated `indicatif` for dynamic terminal spinners and provided clear status updates, including a versioned header.
     - **UI Refinement:** Ensured the CLI clears the spinner before final confirmation for a clean output.
     - **Type Safety:** Resolved numerous model mismatches across `src/ui.rs`, `src/sync.rs`, and `src/main.rs` following library updates.
+
+- **Startup Flow Fix:** Resolved an issue where the application would panic if no configuration was found.
+    - **Refactor:** Updated `init_app` to return `Option`, allowing graceful failure when credentials are missing.
+    - **Wizard Integration:** Modified `main` to automatically launch the `wizard` in TUI mode if no config exists, ensuring a smooth first-run experience.
+    - **CLI Mode Safety:** Implemented a descriptive error message for CLI commands when run without prior setup.
+    - **Continuity:** Configured the app to proceed directly into the TUI after the wizard completes without requiring a restart.

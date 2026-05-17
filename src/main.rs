@@ -66,7 +66,7 @@ fn save_new_task(
     Ok(())
 }
 
-fn init_app() -> Result<(Settings, PathBuf, Database, gqueues_api_rs::GqueuesClient)> {
+fn init_app() -> Result<Option<(Settings, PathBuf, Database, gqueues_api_rs::GqueuesClient)>> {
     // Initialize logging
     let _ = simplelog::WriteLogger::init(
         simplelog::LevelFilter::Debug,
@@ -75,9 +75,10 @@ fn init_app() -> Result<(Settings, PathBuf, Database, gqueues_api_rs::GqueuesCli
     );
 
     // Load config
-    let settings = load_config()?.unwrap_or_else(|| {
-        panic!("Config not found. Please run the setup wizard first.");
-    });
+    let settings = match load_config()? {
+        Some(s) => s,
+        None => return Ok(None),
+    };
 
     // Initialize database
     let db_path = Database::get_default_db_path()?;
@@ -89,14 +90,14 @@ fn init_app() -> Result<(Settings, PathBuf, Database, gqueues_api_rs::GqueuesCli
         settings.gqueues.access_token.clone().unwrap_or_default(),
     );
 
-    Ok((settings, db_path, db, client))
+    Ok(Some((settings, db_path, db, client)))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (settings, db_path, db, client) = match init_app() {
+    let init_result = match init_app() {
         Ok(vals) => vals,
         Err(e) => {
             eprintln!("❌ Initialization error: {}", e);
@@ -104,8 +105,27 @@ async fn main() -> Result<()> {
         }
     };
 
-    let client_shared = Arc::new(client);
-    let db_shared = Arc::new(Mutex::new(db));
+    let (settings, db_path, db_shared, client_shared) = if let Some((s, p, d, c)) = init_result {
+        (s, p, Arc::new(Mutex::new(d)), Arc::new(c))
+    } else {
+        // Config missing
+        if cli.input.is_some() || cli.command.is_some() {
+            eprintln!("❌ Configuration not found. Please run `gqt` without arguments to complete the setup wizard.");
+            std::process::exit(1);
+        }
+
+        // TUI mode - run wizard
+        let db_path = Database::get_default_db_path()?;
+        let settings = wizard::run(db_path.clone()).await?;
+        
+        // Re-initialize after wizard
+        let db = Database::new(db_path.clone())?;
+        let client = gqueues_api_rs::GqueuesClient::new(
+            settings.gqueues.api_endpoint.clone().unwrap_or_else(|| "https://api.gqueues.com/beta".to_string()),
+            settings.gqueues.access_token.clone().unwrap_or_default(),
+        );
+        (settings, db_path, Arc::new(Mutex::new(db)), Arc::new(client))
+    };
 
     // Handle CLI commands
     if let Some(title) = cli.input {
@@ -121,11 +141,6 @@ async fn main() -> Result<()> {
     }
 
     // Launch TUI if no CLI command
-    // Note: We need to take ownership back from Arc if we want to pass Database directly, 
-    // but run_tui and App expect Database to be wrapped in Arc<Mutex> already or it will wrap it.
-    // Actually, App::new takes Database directly. Let's fix that.
-    
-    // Re-wrapping or refactoring run_tui to take shared types
     run_tui_shared(settings, db_path, db_shared, client_shared).await
 }
 
